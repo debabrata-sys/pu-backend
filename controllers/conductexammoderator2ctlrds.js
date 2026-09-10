@@ -1,14 +1,14 @@
 const ConductExamCourse = require("../Models/conductexamcourseds");
-const Moderator = require("../Models/conductexammoderatords");
-const ModeratorPanel = require("../Models/conductexammoderatorpanelds");
-const ModeratorPanelMember = require("../Models/conductexammoderatorpanelmemberds");
-const QuestionPaper = require("../Models/conductexamquestionpaperds");
-const ModerationAudit = require("../Models/conductexammoderationauditds");
+const Moderator = require("../Models/conductexammoderator2ds");
+const ModeratorPanel = require("../Models/conductexammoderatorpanel2ds");
+const ModeratorPanelMember = require("../Models/conductexammoderatorpanelmember2ds");
+const QuestionPaper = require("../Models/conductexamquestionpaper2ds");
+const ModerationAudit = require("../Models/conductexammoderationaudit2ds");
 const AiConfiguration = require("../Models/aiconfigurationds");
 const User = require("../Models/user");
 const Institution = require("../Models/insdetails");
 const { getExamConfigHelper } = require("./conductexamconfigurationctlrds");
-const ConductExamRateCard = require("../Models/conductexamratecardds");
+const ConductExamRateCard = require("../Models/conductexamratecard2ds");
 const { createApprovalTasks, completeApprovalTasks } = require("../utils/approvalTaskHelper");
 const { sendAppointmentLetterEmail } = require("../utils/conductExamAppointmentEmailHelper");
 
@@ -334,7 +334,7 @@ exports.savePanelMembers = async (req, res) => {
         category: "Moderator panel approval",
         pagelink: "/conduct-exam-moderator-panel-approval",
         comments: `Moderator panel ${item.panelname} has a member pending approval.`,
-        referenceModel: "conductexammoderatorpanelmemberds",
+        referenceModel: "conductexammoderatorpanelmember2ds",
         referenceId: savedMember?._id,
         level: "Panel"
       });
@@ -379,7 +379,7 @@ exports.approvePanelMembers = async (req, res) => {
       await completeApprovalTasks({
         colid,
         category: "Moderator panel approval",
-        referenceModel: "conductexammoderatorpanelmemberds",
+        referenceModel: "conductexammoderatorpanelmember2ds",
         referenceId: id,
         level: "Panel",
         comments: `Moderator panel member marked ${approvalstatus} by ${text(req.body.name || req.body.user)}`
@@ -424,7 +424,7 @@ exports.saveModerator = async (req, res) => {
         record: data ? (data.toObject ? data.toObject() : data) : item
       });
     } catch (mailErr) {
-      console.error("[saveModerator] Error dispatching appointment letter:", mailErr.message);
+      console.error("[saveModerator2] Error dispatching appointment letter:", mailErr.message);
       emailResult = { success: false, message: mailErr.message };
     }
 
@@ -486,7 +486,7 @@ exports.bulkModerators = async (req, res) => {
         colid: item.colid,
         type: "moderator",
         record: data ? (data.toObject ? data.toObject() : data) : item
-      }).catch((e) => console.error("[bulkModerators] email dispatch error:", e.message));
+      }).catch((e) => console.error("[bulkModerators2] email dispatch error:", e.message));
     }
     res.json({ success: true, saved, errors });
   } catch (error) {
@@ -791,7 +791,7 @@ exports.getRemunerationBill = async (req, res) => {
     res.json({
       success: true,
       bill: {
-        billno: `BILL-MOD-${moderator._id.toString().slice(-6).toUpperCase()}`,
+        billno: `BILL-MOD2-${moderator._id.toString().slice(-6).toUpperCase()}`,
         billdate: paper?.updatedAt || moderator.updatedAt || new Date(),
         examinercode: moderator.acceptancedata?.examinercode || `${moderator.coursecode}-MOD`,
         examinername: moderator.moderatorname,

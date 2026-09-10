@@ -51,4 +51,4 @@ conductExamPaperSetterSchema.index({
   papersetteremail: 1
 }, { unique: true });
 
-module.exports = mongoose.model("conductexampapersetterds", conductExamPaperSetterSchema);
+module.exports = mongoose.model("conductexampapersetter2ds", conductExamPaperSetterSchema);

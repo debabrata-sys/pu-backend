@@ -15,6 +15,7 @@ const conductExamExaminerSchema = new mongoose.Schema({
   coursecode: { type: String, required: true, trim: true },
   examinername: { type: String, required: true, trim: true },
   examineremail: { type: String, required: true, trim: true },
+  examinercode: { type: String, trim: true, default: "" },
   user: { type: String, trim: true, default: "" }
 }, { timestamps: true });
 

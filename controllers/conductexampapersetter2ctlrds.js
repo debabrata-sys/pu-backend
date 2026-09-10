@@ -5,12 +5,12 @@ const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
 const ConductExam = require("../Models/conductexamds");
 const ConductExamCourse = require("../Models/conductexamcourseds");
-const PaperSetter = require("../Models/conductexampapersetterds");
-const PaperSetterPanel = require("../Models/conductexampapersetterpanelds");
-const PaperSetterPanelMember = require("../Models/conductexampapersetterpanelmemberds");
-const QuestionPaper = require("../Models/conductexamquestionpaperds");
-const QuestionPattern = require("../Models/conductexamquestionpatternds");
-const QuestionPatternDetail = require("../Models/conductexamquestionpatterndetailds");
+const PaperSetter = require("../Models/conductexampapersetter2ds");
+const PaperSetterPanel = require("../Models/conductexampapersetterpanel2ds");
+const PaperSetterPanelMember = require("../Models/conductexampapersetterpanelmember2ds");
+const QuestionPaper = require("../Models/conductexamquestionpaper2ds");
+const QuestionPattern = require("../Models/conductexamquestionpattern2ds");
+const QuestionPatternDetail = require("../Models/conductexamquestionpatterndetail2ds");
 const CourseOutcome = require("../Models/courseoutcomeds");
 const Syllabus = require("../Models/syllabusds");
 const NepLmsTimetable = require("../Models/neplmstimetableds");
@@ -20,7 +20,7 @@ const Awsconfig = require("../Models/awsconfig");
 const Institution = require("../Models/insdetails");
 const { getExamConfigHelper } = require("./conductexamconfigurationctlrds");
 const User = require("../Models/user");
-const ConductExamRateCard = require("../Models/conductexamratecardds");
+const ConductExamRateCard = require("../Models/conductexamratecard2ds");
 const { createApprovalTasks, completeApprovalTasks } = require("../utils/approvalTaskHelper");
 const { sendAppointmentLetterEmail } = require("../utils/conductExamAppointmentEmailHelper");
 
@@ -770,7 +770,7 @@ exports.savePanelMembers = async (req, res) => {
         category: "Paper setter panel approval",
         pagelink: "/conduct-exam-paper-setter-panel-approval",
         comments: `Paper setter panel ${item.panelname} has a member pending approval.`,
-        referenceModel: "conductexampapersetterpanelmemberds",
+        referenceModel: "conductexampapersetterpanelmember2ds",
         referenceId: savedMember?._id,
         level: "Panel"
       });
@@ -815,7 +815,7 @@ exports.approvePanelMembers = async (req, res) => {
       await completeApprovalTasks({
         colid,
         category: "Paper setter panel approval",
-        referenceModel: "conductexampapersetterpanelmemberds",
+        referenceModel: "conductexampapersetterpanelmember2ds",
         referenceId: id,
         level: "Panel",
         comments: `Paper setter panel member marked ${approvalstatus} by ${text(req.body.name || req.body.user)}`
@@ -857,10 +857,10 @@ exports.saveSetter = async (req, res) => {
       emailResult = await sendAppointmentLetterEmail({
         colid: item.colid,
         type: "papersetter",
-        record: data ? data.toObject ? data.toObject() : data : item
+        record: data ? (data.toObject ? data.toObject() : data) : item
       });
     } catch (mailErr) {
-      console.error("[saveSetter] Error dispatching appointment letter:", mailErr.message);
+      console.error("[saveSetter2] Error dispatching appointment letter:", mailErr.message);
       emailResult = { success: false, message: mailErr.message };
     }
 
@@ -922,7 +922,7 @@ exports.bulkSetters = async (req, res) => {
         colid: item.colid,
         type: "papersetter",
         record: data ? (data.toObject ? data.toObject() : data) : item
-      }).catch((e) => console.error("[bulkSetters] email dispatch error:", e.message));
+      }).catch((e) => console.error("[bulkSetters2] email dispatch error:", e.message));
     }
     res.json({ success: true, saved, errors });
   } catch (error) {
@@ -1493,7 +1493,7 @@ exports.getRemunerationBill = async (req, res) => {
     res.json({
       success: true,
       bill: {
-        billno: `BILL-QP-${setter._id.toString().slice(-6).toUpperCase()}`,
+        billno: `BILL-QP2-${setter._id.toString().slice(-6).toUpperCase()}`,
         billdate: paper?.updatedAt || setter.updatedAt || new Date(),
         examinercode: setter.acceptancedata?.examinercode || `${setter.coursecode}-PS`,
         examinername: setter.papersettername,

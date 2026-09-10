@@ -25,6 +25,20 @@ const conductExamModeratorSchema = new mongoose.Schema({
     uploadeddate: { type: Date, default: Date.now }
   }],
   status: { type: String, trim: true, default: "assigned" },
+  acceptancestatus: { type: String, trim: true, default: "Pending" },
+  acceptancedate: { type: Date },
+  acceptancedata: { type: mongoose.Schema.Types.Mixed },
+  declarationstatus: { type: String, trim: true, default: "Pending" },
+  declarationdate: { type: Date },
+  declarationdata: { type: mongoose.Schema.Types.Mixed },
+  bankdetails: {
+    accountholdername: { type: String, trim: true },
+    panno: { type: String, trim: true },
+    accountno: { type: String, trim: true },
+    ifsccode: { type: String, trim: true },
+    bankname: { type: String, trim: true },
+    branch: { type: String, trim: true }
+  },
   user: { type: String, trim: true }
 }, { timestamps: true });
 

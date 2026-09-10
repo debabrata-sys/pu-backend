@@ -34,7 +34,8 @@ const baseCoursePayload = (body = {}) => ({
 const examinerPayload = (body = {}) => ({
   ...baseCoursePayload(body),
   examinername: text(body.examinername || body.examiner || body.name),
-  examineremail: text(body.examineremail || body.email)
+  examineremail: text(body.examineremail || body.email),
+  examinercode: text(body.examinercode)
 });
 
 const allotmentPayload = (body = {}) => ({

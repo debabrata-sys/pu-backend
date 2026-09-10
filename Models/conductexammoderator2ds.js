@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const conductExamPaperSetterSchema = new mongoose.Schema({
+const conductExamModeratorSchema = new mongoose.Schema({
   colid: { type: Number, required: true, index: true },
   academicyear: { type: String, required: true, trim: true },
   regulation: { type: String, required: true, trim: true },
@@ -13,8 +13,8 @@ const conductExamPaperSetterSchema = new mongoose.Schema({
   semester: { type: String, trim: true },
   course: { type: String, required: true, trim: true },
   coursecode: { type: String, required: true, trim: true },
-  papersettername: { type: String, required: true, trim: true },
-  papersetteremail: { type: String, required: true, trim: true, lowercase: true },
+  moderatorname: { type: String, required: true, trim: true },
+  moderatoremail: { type: String, required: true, trim: true, lowercase: true },
   startdate: { type: Date },
   enddate: { type: Date },
   admindocuments: [{
@@ -42,13 +42,13 @@ const conductExamPaperSetterSchema = new mongoose.Schema({
   user: { type: String, trim: true }
 }, { timestamps: true });
 
-conductExamPaperSetterSchema.index({
+conductExamModeratorSchema.index({
   colid: 1,
   academicyear: 1,
   examcode: 1,
   programcode: 1,
   coursecode: 1,
-  papersetteremail: 1
+  moderatoremail: 1
 }, { unique: true });
 
-module.exports = mongoose.model("conductexampapersetterds", conductExamPaperSetterSchema);
+module.exports = mongoose.model("conductexammoderator2ds", conductExamModeratorSchema);

@@ -413,7 +413,7 @@ Enclosures:
 function appointmentHtml(member, inst = {}, includeCredentials = false, customContent = "") {
   const name = inst.institutionname || inst.name || "Institution";
   const address = inst.address || "";
-  const phone = inst.phone || inst.contact || "";
+  const phone = inst.phone || inst.contact || "0755-4005402";
   const email = inst.email || inst.emailid || "";
   const logo = inst.logolink || inst.logo || "";
   const content = replaceAppointmentPlaceholders(customContent || defaultAppointmentContent(member, inst, includeCredentials), member, inst, includeCredentials);
@@ -427,9 +427,9 @@ function appointmentHtml(member, inst = {}, includeCredentials = false, customCo
   </style></head><body><div class="page"><div class="head">${logo ? `<img class="logo" src="${logo}"/>` : ""}<div class="inst">${name}</div><div class="addr">${address}</div><div class="contact">${[phone, email].filter(Boolean).join(" | ")}</div></div>
   <div class="meta"><div><b>Ref:</b> ${appointmentRef(member)}</div><div><b>Date:</b> ${new Date().toLocaleDateString("en-GB")}</div></div>
   <div class="conf">MOST CONFIDENTIAL &amp; URGENT</div>
-  <table class="fromto"><tbody><tr><td><b>From:</b><br/>Controller of Examinations<br/>${name}<br/>${address}</td><td><b>To:</b><br/>${member.examinername || ""}${member.designation ? `, ${member.designation}` : ""}<br/>${member.address || ""}</td></tr></tbody></table>
+  <table class="fromto"><tbody><tr><td><b>From:</b><br/>Assistant Registrar(Confidential)<br/>${name}<br/>${address}</td><td><b>To:</b><br/>${member.examinername || ""}${member.designation ? `, ${member.designation}` : ""}<br/>${member.address || ""}</td></tr></tbody></table>
   <div class="content">${paragraphs}</div>
-  <div class="sign">Yours faithfully,<br/><br/>Mr. Vinod Kushwah<br/><span class="small">Assistant Registrar (Examinations)</span></div></div></body></html>`;
+  <div class="sign">Yours faithfully<br/><br/>(Signature)<br/><br/>Assistant Registrar(Confidential)<br/>Ph.No.- ${phone || "0755-4005402"}</div></div></body></html>`;
 }
 
 function stripHtml(html) {

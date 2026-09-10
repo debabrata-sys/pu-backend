@@ -12,6 +12,7 @@ const HrLeaveHolidayList = require("../Models/hrleaveholidaylistds");
 const AiConfiguration = require("../Models/aiconfigurationds");
 const OllamaConfiguration = require("../Models/ollamaconfigurationds");
 const InsDetails = require("../Models/insdetails");
+const ConductExamFormSubmission = require("../Models/conductexamformsubmissionds");
 
 const text = (value) => String(value || "").trim();
 const number = (value) => {
@@ -345,23 +346,22 @@ const buildFilter = (source = {}, fields = []) => {
 };
 
 const rollListFilterFields = ["academicyear", "regulation", "exam", "examcode", "program", "programcode", "type", "subject", "semester", "course", "coursecode", "student", "regno", "email", "phone", "section", "examsection", "applied", "admitcardeligible", "attended", "attendance", "fees", "disciplinary", "atkt", "examdate", "examslot", "campus", "building", "examroom", "seatno", "examseatno"];
-const defaultRollListComponents = ["Section-A", "Section-B", "Pr"];
+const defaultRollListComponents = ["Th"];
 
 const normalizeExamSection = (value) => {
   const item = text(value);
   if (!item) return "";
   const lower = item.toLowerCase().replace(/\s+/g, "");
-  if (["sectiona", "seca", "a"].includes(lower)) return "Section-A";
-  if (["sectionb", "secb", "b"].includes(lower)) return "Section-B";
-  if (["pr", "practical", "pract"].includes(lower)) return "Pr";
+  if (["th", "theory", "sectiona", "seca", "a", "sectionb", "secb", "b"].includes(lower)) return "Th";
+  if (["pr", "practical", "pract", "lab", "seminar", "project"].includes(lower)) return "Pr";
   return item;
 };
 
 const parseExamSections = (value) => {
   const raw = text(value);
-  if (!raw) return [...defaultRollListComponents];
+  if (!raw) return [];
   const parts = raw.split(/[,;|/]+/).map(normalizeExamSection).filter(Boolean);
-  return parts.length ? uniq(parts) : [...defaultRollListComponents];
+  return parts.length ? uniq(parts) : [];
 };
 
 const parseDynamicFilters = (raw) => {
@@ -898,7 +898,28 @@ exports.getExamRollListReportOptions = async (req, res) => {
   try {
     const colid = number(req.query.colid);
     if (colid === undefined) return res.status(400).json({ success: false, message: "colid is required" });
-    const rows = await ConductExamRoll.find({ colid }).select(rollListFilterFields.join(" ")).lean();
+    let rows = await ConductExamRoll.find({ colid }).select(rollListFilterFields.join(" ")).lean();
+    if (!rows.length) {
+      const subs = await ConductExamFormSubmission.find({ colid }).lean();
+      if (subs.length) {
+        rows = subs.flatMap((sub) => (sub.courses || []).map((c) => ({
+          colid: sub.colid,
+          academicyear: sub.academicyear,
+          regulation: sub.regulation,
+          exam: sub.exam,
+          examcode: sub.examcode,
+          program: sub.program,
+          programcode: sub.programcode,
+          semester: sub.semester,
+          student: sub.student,
+          regno: sub.regno,
+          course: c.course,
+          coursecode: c.coursecode,
+          applied: "Yes",
+          batch: sub.academicyear
+        })));
+      }
+    }
     const regnos = uniq(rows.map((row) => row.regno));
     const users = regnos.length
       ? await User.find({ colid, regno: { $in: regnos } }).select("admissionyear academicyear").lean()
@@ -917,7 +938,38 @@ exports.getExamRollListReport = async (req, res) => {
 
     const filter = { colid };
     addDynamicFiltersToQuery(filter, parseDynamicFilters(req.query.filters));
-    const rows = await ConductExamRoll.find(filter).sort({ program: 1, semester: 1, coursecode: 1, regno: 1 }).lean();
+    let rows = await ConductExamRoll.find(filter).sort({ program: 1, semester: 1, coursecode: 1, regno: 1 }).lean();
+    if (!rows.length) {
+      const subQuery = { colid };
+      if (filter.academicyear) subQuery.academicyear = filter.academicyear;
+      if (filter.regulation) subQuery.regulation = filter.regulation;
+      if (filter.programcode) subQuery.programcode = filter.programcode;
+      if (filter.semester) subQuery.semester = filter.semester;
+      if (filter.examcode) subQuery.examcode = filter.examcode;
+      const subs = await ConductExamFormSubmission.find(subQuery).lean();
+      if (subs.length) {
+        rows = subs.flatMap((sub) => (sub.courses || []).map((c) => ({
+          colid: sub.colid,
+          academicyear: sub.academicyear,
+          regulation: sub.regulation,
+          exam: sub.exam,
+          examcode: sub.examcode,
+          program: sub.program,
+          programcode: sub.programcode,
+          semester: sub.semester,
+          student: sub.student,
+          regno: sub.regno,
+          email: sub.email,
+          phone: sub.phone,
+          course: c.course,
+          coursecode: c.coursecode,
+          coursetype: c.type || "Theory",
+          applied: "Yes",
+          batch: sub.academicyear,
+          faculty: sub.faculty || ""
+        })));
+      }
+    }
     const regnos = uniq(rows.map((row) => row.regno));
     const users = await User.find({ colid, regno: { $in: regnos } })
       .select("name regno fathername guardianname admissionyear academicyear rollno section program programcode photo email phone")
@@ -925,7 +977,6 @@ exports.getExamRollListReport = async (req, res) => {
     const userMap = new Map(users.map((user) => [text(user.regno), user]));
 
     const courseMap = new Map();
-    const courseComponentMap = new Map();
     rows.forEach((row) => {
       const key = text(row.coursecode) || text(row.course);
       if (!key || courseMap.has(key)) return;
@@ -934,20 +985,54 @@ exports.getExamRollListReport = async (req, res) => {
         course: text(row.course),
         subject: text(row.subject),
         type: text(row.type),
-        semester: text(row.semester)
+        semester: text(row.semester),
+        coursetype: text(row.coursetype)
       });
     });
-    rows.forEach((row) => {
-      const key = text(row.coursecode) || text(row.course);
-      if (!key) return;
-      if (!courseComponentMap.has(key)) courseComponentMap.set(key, new Set());
-      parseExamSections(row.examsection).forEach((component) => courseComponentMap.get(key).add(component));
-    });
+
+    const courseCodes = [...new Set([...courseMap.values()].map((c) => text(c.coursecode)).filter(Boolean))];
+    const courseNames = [...new Set([...courseMap.values()].map((c) => text(c.course)).filter(Boolean))];
+
+    const regCourses = await RegulationCourseMap.find({
+      colid,
+      $or: [
+        { coursecode: { $in: courseCodes } },
+        { course: { $in: courseNames } }
+      ]
+    }).lean();
+
     const courses = [...courseMap.values()]
       .map((course) => {
-        const key = text(course.coursecode) || text(course.course);
-        const components = [...(courseComponentMap.get(key) || new Set())];
-        return { ...course, components: components.length ? components : [...defaultRollListComponents] };
+        const cCode = text(course.coursecode).toLowerCase();
+        const cName = text(course.course).toLowerCase();
+        const matched = regCourses.filter(
+          (rc) =>
+            (cCode && text(rc.coursecode).toLowerCase() === cCode) ||
+            (cName && text(rc.course).toLowerCase() === cName)
+        );
+
+        let components = [];
+        if (matched.length > 0) {
+          const types = matched.map((m) => text(m.coursetype).toLowerCase());
+          const hasTheory = types.some((t) => t.includes("theory") || t.includes("tutorial") || t === "");
+          const hasPractical = types.some((t) => t.includes("practical") || t.includes("project") || t.includes("seminar") || t.includes("internship") || t.includes("lab"));
+
+          if (hasTheory) components.push("Th");
+          if (hasPractical) components.push("Pr");
+          if (!hasTheory && !hasPractical) components.push("Th");
+        } else {
+          // Fallback if not in regulation course map:
+          const cType = text(course.coursetype || course.type).toLowerCase();
+          const isPr = cType.includes("practical") || cName.includes("practical") || cName.includes("lab") || cName.includes("seminar") || cName.includes("project");
+          const isTh = cType.includes("theory") || !isPr;
+          if (isTh) components.push("Th");
+          if (isPr) components.push("Pr");
+        }
+
+        return {
+          ...course,
+          components: components.length ? components : ["Th"]
+        };
       })
       .sort((a, b) => text(a.coursecode || a.course).localeCompare(text(b.coursecode || b.course), undefined, { numeric: true }));
 
@@ -964,20 +1049,22 @@ exports.getExamRollListReport = async (req, res) => {
           enrollmentno: text(row.regno || user.regno),
           rollno: text(user.rollno),
           fathername: text(user.fathername || user.guardianname),
-          batch: text(user.admissionyear || user.academicyear || row.academicyear),
+          faculty: text(row.faculty || user.faculty || user.department || "General"),
+          batch: text(user.admissionyear || user.academicyear || row.batch || row.academicyear),
           section: text(row.section || user.section),
           courses: {}
         });
       }
       const courseKey = text(row.coursecode) || text(row.course);
       const isApplied = text(row.applied).toLowerCase() !== "no";
+      const courseObj = courses.find((c) => text(c.coursecode) === courseKey || text(c.course) === courseKey);
+      const validComponents = courseObj?.components || ["Th"];
+
       const existing = studentMap.get(key).courses[courseKey] || {};
-      parseExamSections(row.examsection).forEach((component) => {
-        existing[component] = isApplied ? "1" : "";
-      });
-      existing.sectionA = existing["Section-A"] || "";
-      existing.sectionB = existing["Section-B"] || "";
-      existing.practical = existing.Pr || "";
+      if (isApplied) {
+        if (validComponents.includes("Th")) existing.Th = "1";
+        if (validComponents.includes("Pr")) existing.Pr = "1";
+      }
       studentMap.get(key).courses[courseKey] = existing;
     });
 
@@ -997,14 +1084,16 @@ exports.getExamRollListReport = async (req, res) => {
     const totals = courses.map((course) => {
       const key = text(course.coursecode) || text(course.course);
       const components = {};
-      (course.components || defaultRollListComponents).forEach((component) => {
-        components[component] = students.filter((student) => student.courses[key]?.[component]).length;
+      (course.components || ["Th"]).forEach((component) => {
+        components[component] = students.filter(
+          (student) => student.courses[key]?.[component] === "1" || student.courses[key]?.[component] === 1
+        ).length;
       });
       return {
         coursecode: course.coursecode,
+        course: course.course,
         components,
-        sectionA: components["Section-A"] || 0,
-        sectionB: components["Section-B"] || 0,
+        theory: components.Th || 0,
         practical: components.Pr || 0
       };
     });
@@ -1014,13 +1103,13 @@ exports.getExamRollListReport = async (req, res) => {
     const exam = first.exam || "";
     const examMaster = first.examcode ? await ConductExam.findOne({ colid, examcode: first.examcode }).lean() : null;
     const header = {
-      institutionname: text(institution?.institutionname) || "Institution",
-      address: text(institution?.address),
+      institutionname: text(institution?.institutionname) || "PEOPLE'S UNIVERSITY, BHOPAL",
+      address: text(institution?.address) || text(institution?.contactusdetails) || "",
       logolink: text(institution?.logolink),
-      examName: text(exam || examMaster?.examname),
+      examName: text(exam || examMaster?.examname || first.examname || "PH.D COURSE WORK, JUNE-2026"),
       institute: text(req.query.institute || institution?.institutionname),
-      examCentre: text(req.query.examCentre || req.query.examcentre),
-      course: text(first.program || first.programcode),
+      examCentre: text(req.query.examCentre || req.query.examcentre || "People's Institute of Management & Research(New Campus)"),
+      course: text(first.program || first.programcode || "Ph.D.(Course Work)"),
       year: yearLabelFromSemester(first.semester),
       status: text(req.query.statusLabel || examMaster?.type || "Main")
     };
@@ -1041,8 +1130,8 @@ exports.getExamRollListReport = async (req, res) => {
       summary: {
         studentCount: students.length,
         courseCount: courses.length,
-        theoryTotal: totals.reduce((sum, item) => sum + item.sectionA + item.sectionB, 0),
-        practicalTotal: totals.reduce((sum, item) => sum + item.practical, 0)
+        theoryTotal: totals.reduce((sum, item) => sum + (item.theory || 0), 0),
+        practicalTotal: totals.reduce((sum, item) => sum + (item.practical || 0), 0)
       }
     });
   } catch (err) {

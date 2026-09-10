@@ -40,12 +40,14 @@ const phdModuleController = require("./controllers/phdmodulectlrds");
 const aiCodingAgentSchedulerController = require("./controllers/aicodingagentctlrds");
 aiCodingAgentSchedulerController.registerScheduler();
 
-const DB=process.env.DATABASE.replace('<PASSWORD>',process.env.DATABASE_PASSWORD);
-const DB1=process.env.DATABASE2;
+const DB = (process.env.DATABASE || 'mongodb://127.0.0.1:27017/ep3').replace('<PASSWORD>', process.env.DATABASE_PASSWORD || '');
+const DB1 = process.env.DATABASE2 || DB || 'mongodb://127.0.0.1:27017/ep3';
 
 mongoose.connect(DB1).then(con => {
-    console.log('Connected');
-})
+    console.log('[DB]: Local MongoDB Connected successfully to ' + DB1);
+}).catch(err => {
+    console.error('[DB]: MongoDB connection error:', err);
+});
 
 // mongoose.connect(DB1, {
 //     useNewUrlParser: true,
@@ -212,6 +214,10 @@ const eventManagementNewController = require('./controllers/eventmanagementnewct
 const estateManagementController = require('./controllers/estatemanagementctlrds');
 const onlineExamController = require('./controllers/onlineexamctlrds');
 const conductExamAppealController = require('./controllers/conductexamappealctlrds');
+const conductExamDabaController = require('./controllers/conductexamdabactlrds');
+app.get('/api/v2/conductexam/daba-options', conductExamDabaController.getDabaOptions);
+app.get('/api/v2/conductexam/daba-report', conductExamDabaController.getDabaReport);
+app.post('/api/v2/conductexam/daba-seed-sample', conductExamDabaController.seedSampleDabaData);
 app.get('/api/v2/dashboard-widgets', dashboardWidgetController.getWidgets);
 app.get('/api/v2/dashboard-widget-data', dashboardWidgetController.getWidgetData);
 app.get('/api/v2/dashboard-widget-dashboards', dashboardWidgetController.getDashboards);
@@ -5415,12 +5421,20 @@ const conductexampapersetterctlrds = require("./controllers/conductexampapersett
 const conductexammoderatorctlrds = require("./controllers/conductexammoderatorctlrds");
 const conductexampaperreviewctlrds = require("./controllers/conductexampaperreviewctlrds");
 const conductexamratecardctlrds = require("./controllers/conductexamratecardctlrds");
+const conductexamremunerationctlrds = require("./controllers/conductexamremunerationctlrds");
 const conductexampaymentctlrds = require("./controllers/conductexampaymentctlrds");
+const conductexampapersetter2ctlrds = require("./controllers/conductexampapersetter2ctlrds");
+const conductexammoderator2ctlrds = require("./controllers/conductexammoderator2ctlrds");
+const conductexampaperreview2ctlrds = require("./controllers/conductexampaperreview2ctlrds");
+const conductexamremuneration2ctlrds = require("./controllers/conductexamremuneration2ctlrds");
+const conductexampayment2ctlrds = require("./controllers/conductexampayment2ctlrds");
+const conductexamstockctlrds = require("./controllers/conductexamstockctlrds");
 const conductexamstationaryctlrds = require("./controllers/conductexamstationaryctlrds");
 const conductexamgeneratorctlrds = require("./controllers/conductexamgeneratorctlrds");
 const conductexamonscreenctlrds = require("./controllers/conductexamonscreenctlrds");
 const conductexamhallticketctlrds = require("./controllers/conductexamhallticketctlrds");
 const conductexamformctlrds = require("./controllers/conductexamformctlrds");
+const conductexamconfigurationctlrds = require("./controllers/conductexamconfigurationctlrds");
 const feedbackadvancedctlrds = require("./controllers/feedbackadvancedctlrds");
 const visitingfacultyctlrds = require("./controllers/visitingfacultyctlrds");
 const courseassessmentctlrds = require("./controllers/courseassessmentctlrds");
@@ -5904,6 +5918,33 @@ app.get("/api/v2/conductexam/payment-options", conductexampaymentctlrds.options)
 app.get("/api/v2/conductexam/examiner-payment", conductexampaymentctlrds.examinerPayment);
 app.get("/api/v2/conductexam/papersetter-payment", conductexampaymentctlrds.paperSetterPayment);
 app.get("/api/v2/conductexam/moderator-payment", conductexampaymentctlrds.moderatorPayment);
+
+// New Examiner Remuneration, Internal/External Rules, and Bill Generation Routes
+app.get("/api/v2/conductexam/remuneration/options", conductexamremunerationctlrds.options);
+app.get("/api/v2/conductexam/remuneration/examiners", conductexamremunerationctlrds.getExaminers);
+app.post("/api/v2/conductexam/remuneration/examiners", conductexamremunerationctlrds.saveExaminer);
+app.post("/api/v2/conductexam/remuneration/examiners-bulk", conductexamremunerationctlrds.bulkExaminers);
+app.post("/api/v2/conductexam/remuneration/examiners/delete", conductexamremunerationctlrds.deleteExaminer);
+app.get("/api/v2/conductexam/remuneration/payment-summary", conductexamremunerationctlrds.calculatePayment);
+app.post("/api/v2/conductexam/remuneration/generate-bill", conductexamremunerationctlrds.generateBill);
+app.get("/api/v2/conductexam/remuneration/bills", conductexamremunerationctlrds.getBills);
+app.get("/api/v2/conductexam/remuneration/bills/:id", conductexamremunerationctlrds.getBillById);
+
+// Conduct Exam Stock Management (Institutes, HOS, Entries, Transactions)
+app.get("/api/v2/conductexam/stock/institutes", conductexamstockctlrds.getInstitutes);
+app.post("/api/v2/conductexam/stock/institutes", conductexamstockctlrds.saveInstitute);
+app.post("/api/v2/conductexam/stock/institutes/delete", conductexamstockctlrds.deleteInstitute);
+app.get("/api/v2/conductexam/stock/hos", conductexamstockctlrds.getHos);
+app.post("/api/v2/conductexam/stock/hos", conductexamstockctlrds.saveHos);
+app.post("/api/v2/conductexam/stock/hos/delete", conductexamstockctlrds.deleteHos);
+app.get("/api/v2/conductexam/stock/options", conductexamstockctlrds.getOptions);
+app.get("/api/v2/conductexam/stock/entries", conductexamstockctlrds.getStockEntries);
+app.post("/api/v2/conductexam/stock/entries", conductexamstockctlrds.saveStockEntry);
+app.post("/api/v2/conductexam/stock/entries/delete", conductexamstockctlrds.deleteStockEntry);
+app.get("/api/v2/conductexam/stock/transactions", conductexamstockctlrds.getTransactions);
+app.post("/api/v2/conductexam/stock/transactions", conductexamstockctlrds.saveTransaction);
+app.post("/api/v2/conductexam/stock/transactions/delete", conductexamstockctlrds.deleteTransaction);
+
 app.get("/api/v2/conductexam/examiner-options", conductexamexaminerctlrds.options);
 app.get("/api/v2/conductexam/examiners", conductexamexaminerctlrds.getExaminers);
 app.post("/api/v2/conductexam/examiners", conductexamexaminerctlrds.saveExaminer);
@@ -5941,12 +5982,22 @@ app.get("/api/v2/conductexam/papersetters", conductexampapersetterctlrds.getSett
 app.post("/api/v2/conductexam/papersetters", conductexampapersetterctlrds.saveSetter);
 app.post("/api/v2/conductexam/papersetters-delete", conductexampapersetterctlrds.deleteSetter);
 app.post("/api/v2/conductexam/papersetters-bulk", conductexampapersetterctlrds.bulkSetters);
+app.post("/api/v2/conductexam/papersetters-send-letter", conductexampapersetterctlrds.sendAppointmentLetter);
+app.get("/api/v2/conductexam/configuration", conductexamconfigurationctlrds.getExamConfiguration);
+app.post("/api/v2/conductexam/configuration", conductexamconfigurationctlrds.saveExamConfiguration);
+app.post("/api/v2/conductexam/configuration-logo-upload", conductexamconfigurationctlrds.uploadMiddleware, conductexamconfigurationctlrds.uploadLogo);
+app.get("/api/v2/conductexam2/configuration", conductexamconfigurationctlrds.getExamConfiguration);
+app.post("/api/v2/conductexam2/configuration", conductexamconfigurationctlrds.saveExamConfiguration);
+app.post("/api/v2/conductexam2/configuration-logo-upload", conductexamconfigurationctlrds.uploadMiddleware, conductexamconfigurationctlrds.uploadLogo);
 app.get("/api/v2/conductexam/papersetter-assigned-papers", conductexampapersetterctlrds.assignedPapers);
 app.get("/api/v2/conductexam/question-paper", conductexampapersetterctlrds.getQuestionPaper);
 app.get("/api/v2/conductexam/question-paper-syllabus-context", conductexampapersetterctlrds.getQuestionPaperSyllabusContext);
 app.post("/api/v2/conductexam/question-paper", conductexampapersetterctlrds.saveQuestionPaper);
 app.post("/api/v2/conductexam/question-paper-documents", conductexampapersetterctlrds.saveQuestionPaperDocuments);
 app.post("/api/v2/conductexam/question-paper-submit", conductexampapersetterctlrds.submitQuestionPaper);
+app.post("/api/v2/conductexam/papersetter-accept", conductexampapersetterctlrds.acceptForm);
+app.get("/api/v2/conductexam/papersetter-remuneration-bill", conductexampapersetterctlrds.getRemunerationBill);
+app.post("/api/v2/conductexam/papersetter-bank-details", conductexampapersetterctlrds.saveBankDetails);
 app.post("/api/v2/conductexam/question-paper-upload", conductexampapersetterctlrds.uploadMiddleware, conductexampapersetterctlrds.uploadAttachment);
 app.post("/api/v2/conductexam/question-paper-generate", conductexampapersetterctlrds.generateQuestions);
 app.post("/api/v2/conductexam/question-paper-ai-map", conductexampapersetterctlrds.analyzeMapping);
@@ -5965,11 +6016,15 @@ app.get("/api/v2/conductexam/moderators", conductexammoderatorctlrds.getModerato
 app.post("/api/v2/conductexam/moderators", conductexammoderatorctlrds.saveModerator);
 app.post("/api/v2/conductexam/moderators-delete", conductexammoderatorctlrds.deleteModerator);
 app.post("/api/v2/conductexam/moderators-bulk", conductexammoderatorctlrds.bulkModerators);
+app.post("/api/v2/conductexam/moderators-send-letter", conductexammoderatorctlrds.sendAppointmentLetter);
 app.get("/api/v2/conductexam/moderator-assigned-papers", conductexammoderatorctlrds.assignedPapers);
 app.get("/api/v2/conductexam/moderation-paper", conductexammoderatorctlrds.getModerationPaper);
 app.post("/api/v2/conductexam/moderation-paper", conductexammoderatorctlrds.saveModerationPaper);
 app.post("/api/v2/conductexam/moderation-gemini", conductexammoderatorctlrds.geminiModerate);
 app.post("/api/v2/conductexam/moderation-submit", conductexammoderatorctlrds.submitModeration);
+app.post("/api/v2/conductexam/moderator-accept", conductexammoderatorctlrds.acceptForm);
+app.get("/api/v2/conductexam/moderator-remuneration-bill", conductexammoderatorctlrds.getRemunerationBill);
+app.post("/api/v2/conductexam/moderator-bank-details", conductexammoderatorctlrds.saveBankDetails);
 app.get("/api/v2/conductexam/review-options", conductexampaperreviewctlrds.options);
 app.get("/api/v2/conductexam/review-papers", conductexampaperreviewctlrds.getPapers);
 app.get("/api/v2/conductexam/review-paper-details", conductexampaperreviewctlrds.getPaperDetails);
@@ -5978,6 +6033,91 @@ app.post("/api/v2/conductexam/review-paper-status", conductexampaperreviewctlrds
 app.post("/api/v2/conductexam/review-paper-blockchain-store", conductexampaperreviewctlrds.storeBlockchain);
 app.get("/api/v2/public/conductexam/question-paper-blockchain-verify", conductexampaperreviewctlrds.verifyBlockchain);
 app.post("/api/v2/public/conductexam/question-paper-print-format", conductexampaperreviewctlrds.formatVerifiedQuestionPaperPrint);
+
+// Question Paper Management 2 Routes
+app.get("/api/v2/conductexam2/payment-options", conductexampayment2ctlrds.options);
+app.get("/api/v2/conductexam2/examiner-payment", conductexampayment2ctlrds.examinerPayment);
+app.get("/api/v2/conductexam2/papersetter-payment", conductexampayment2ctlrds.paperSetterPayment);
+app.get("/api/v2/conductexam2/moderator-payment", conductexampayment2ctlrds.moderatorPayment);
+
+app.get("/api/v2/conductexam2/remuneration/options", conductexamremuneration2ctlrds.options);
+app.get("/api/v2/conductexam2/remuneration/examiners", conductexamremuneration2ctlrds.getExaminers);
+app.post("/api/v2/conductexam2/remuneration/examiners", conductexamremuneration2ctlrds.saveExaminer);
+app.post("/api/v2/conductexam2/remuneration/examiners-bulk", conductexamremuneration2ctlrds.bulkExaminers);
+app.post("/api/v2/conductexam2/remuneration/examiners/delete", conductexamremuneration2ctlrds.deleteExaminer);
+app.get("/api/v2/conductexam2/remuneration/payment-summary", conductexamremuneration2ctlrds.calculatePayment);
+app.post("/api/v2/conductexam2/remuneration/generate-bill", conductexamremuneration2ctlrds.generateBill);
+app.get("/api/v2/conductexam2/remuneration/bills", conductexamremuneration2ctlrds.getBills);
+app.get("/api/v2/conductexam2/remuneration/bills/:id", conductexamremuneration2ctlrds.getBillById);
+
+app.get("/api/v2/conductexam2/papersetter-options", conductexampapersetter2ctlrds.options);
+app.get("/api/v2/conductexam2/question-patterns", conductexampapersetter2ctlrds.getQuestionPatterns);
+app.post("/api/v2/conductexam2/question-patterns", conductexampapersetter2ctlrds.saveQuestionPattern);
+app.post("/api/v2/conductexam2/question-patterns-delete", conductexampapersetter2ctlrds.deleteQuestionPatterns);
+app.post("/api/v2/conductexam2/question-patterns-bulk", conductexampapersetter2ctlrds.bulkQuestionPatterns);
+app.get("/api/v2/conductexam2/question-pattern-details", conductexampapersetter2ctlrds.getQuestionPatternDetails);
+app.post("/api/v2/conductexam2/question-pattern-details", conductexampapersetter2ctlrds.saveQuestionPatternDetail);
+app.post("/api/v2/conductexam2/question-pattern-details-delete", conductexampapersetter2ctlrds.deleteQuestionPatternDetails);
+app.post("/api/v2/conductexam2/question-pattern-details-bulk", conductexampapersetter2ctlrds.bulkQuestionPatternDetails);
+app.get("/api/v2/conductexam2/papersetter-panels", conductexampapersetter2ctlrds.getPanels);
+app.post("/api/v2/conductexam2/papersetter-panels", conductexampapersetter2ctlrds.savePanel);
+app.post("/api/v2/conductexam2/papersetter-panels-delete", conductexampapersetter2ctlrds.deletePanel);
+app.post("/api/v2/conductexam2/papersetter-panels-bulk", conductexampapersetter2ctlrds.bulkPanels);
+app.get("/api/v2/conductexam2/papersetter-panel-members", conductexampapersetter2ctlrds.getPanelMembers);
+app.post("/api/v2/conductexam2/papersetter-panel-members", conductexampapersetter2ctlrds.savePanelMembers);
+app.post("/api/v2/conductexam2/papersetter-panel-members-delete", conductexampapersetter2ctlrds.deletePanelMembers);
+app.post("/api/v2/conductexam2/papersetter-panel-members-approve", conductexampapersetter2ctlrds.approvePanelMembers);
+app.get("/api/v2/conductexam2/papersetters", conductexampapersetter2ctlrds.getSetters);
+app.post("/api/v2/conductexam2/papersetters", conductexampapersetter2ctlrds.saveSetter);
+app.post("/api/v2/conductexam2/papersetters-delete", conductexampapersetter2ctlrds.deleteSetter);
+app.post("/api/v2/conductexam2/papersetters-bulk", conductexampapersetter2ctlrds.bulkSetters);
+app.post("/api/v2/conductexam2/papersetters-send-letter", conductexampapersetter2ctlrds.sendAppointmentLetter);
+app.get("/api/v2/conductexam2/papersetter-assigned-papers", conductexampapersetter2ctlrds.assignedPapers);
+app.get("/api/v2/conductexam2/question-paper", conductexampapersetter2ctlrds.getQuestionPaper);
+app.get("/api/v2/conductexam2/question-paper-syllabus-context", conductexampapersetter2ctlrds.getQuestionPaperSyllabusContext);
+app.post("/api/v2/conductexam2/question-paper", conductexampapersetter2ctlrds.saveQuestionPaper);
+app.post("/api/v2/conductexam2/question-paper-documents", conductexampapersetter2ctlrds.saveQuestionPaperDocuments);
+app.post("/api/v2/conductexam2/question-paper-submit", conductexampapersetter2ctlrds.submitQuestionPaper);
+app.post("/api/v2/conductexam2/papersetter-accept", conductexampapersetter2ctlrds.acceptForm);
+app.get("/api/v2/conductexam2/papersetter-remuneration-bill", conductexampapersetter2ctlrds.getRemunerationBill);
+app.post("/api/v2/conductexam2/papersetter-bank-details", conductexampapersetter2ctlrds.saveBankDetails);
+app.post("/api/v2/conductexam2/question-paper-upload", conductexampapersetter2ctlrds.uploadMiddleware, conductexampapersetter2ctlrds.uploadAttachment);
+app.post("/api/v2/conductexam2/question-paper-generate", conductexampapersetter2ctlrds.generateQuestions);
+app.post("/api/v2/conductexam2/question-paper-ai-map", conductexampapersetter2ctlrds.analyzeMapping);
+app.post("/api/v2/conductexam2/question-paper-translate", conductexampapersetter2ctlrds.translateQuestionPaper);
+app.post("/api/v2/conductexam2/question-paper-pattern-format", conductexampapersetter2ctlrds.formatPatternwiseQuestionPaper);
+
+app.get("/api/v2/conductexam2/moderator-options", conductexammoderator2ctlrds.options);
+app.get("/api/v2/conductexam2/moderator-panels", conductexammoderator2ctlrds.getPanels);
+app.post("/api/v2/conductexam2/moderator-panels", conductexammoderator2ctlrds.savePanel);
+app.post("/api/v2/conductexam2/moderator-panels-delete", conductexammoderator2ctlrds.deletePanel);
+app.post("/api/v2/conductexam2/moderator-panels-bulk", conductexammoderator2ctlrds.bulkPanels);
+app.get("/api/v2/conductexam2/moderator-panel-members", conductexammoderator2ctlrds.getPanelMembers);
+app.post("/api/v2/conductexam2/moderator-panel-members", conductexammoderator2ctlrds.savePanelMembers);
+app.post("/api/v2/conductexam2/moderator-panel-members-delete", conductexammoderator2ctlrds.deletePanelMembers);
+app.post("/api/v2/conductexam2/moderator-panel-members-approve", conductexammoderator2ctlrds.approvePanelMembers);
+app.get("/api/v2/conductexam2/moderators", conductexammoderator2ctlrds.getModerators);
+app.post("/api/v2/conductexam2/moderators", conductexammoderator2ctlrds.saveModerator);
+app.post("/api/v2/conductexam2/moderators-delete", conductexammoderator2ctlrds.deleteModerator);
+app.post("/api/v2/conductexam2/moderators-bulk", conductexammoderator2ctlrds.bulkModerators);
+app.post("/api/v2/conductexam2/moderators-send-letter", conductexammoderator2ctlrds.sendAppointmentLetter);
+app.get("/api/v2/conductexam2/moderator-assigned-papers", conductexammoderator2ctlrds.assignedPapers);
+app.get("/api/v2/conductexam2/moderation-paper", conductexammoderator2ctlrds.getModerationPaper);
+app.post("/api/v2/conductexam2/moderation-paper", conductexammoderator2ctlrds.saveModerationPaper);
+app.post("/api/v2/conductexam2/moderation-gemini", conductexammoderator2ctlrds.geminiModerate);
+app.post("/api/v2/conductexam2/moderation-submit", conductexammoderator2ctlrds.submitModeration);
+app.post("/api/v2/conductexam2/moderator-accept", conductexammoderator2ctlrds.acceptForm);
+app.get("/api/v2/conductexam2/moderator-remuneration-bill", conductexammoderator2ctlrds.getRemunerationBill);
+app.post("/api/v2/conductexam2/moderator-bank-details", conductexammoderator2ctlrds.saveBankDetails);
+
+app.get("/api/v2/conductexam2/review-options", conductexampaperreview2ctlrds.options);
+app.get("/api/v2/conductexam2/review-papers", conductexampaperreview2ctlrds.getPapers);
+app.get("/api/v2/conductexam2/review-paper-details", conductexampaperreview2ctlrds.getPaperDetails);
+app.post("/api/v2/conductexam2/review-paper-accept", conductexampaperreview2ctlrds.acceptPaper);
+app.post("/api/v2/conductexam2/review-paper-status", conductexampaperreview2ctlrds.updatePaperStatus);
+app.post("/api/v2/conductexam2/review-paper-blockchain-store", conductexampaperreview2ctlrds.storeBlockchain);
+app.get("/api/v2/public/conductexam2/question-paper-blockchain-verify", conductexampaperreview2ctlrds.verifyBlockchain);
+app.post("/api/v2/public/conductexam2/question-paper-print-format", conductexampaperreview2ctlrds.formatVerifiedQuestionPaperPrint);
 app.get("/api/v2/visitingfaculty/faculty", visitingfacultyctlrds.getFaculty);
 app.post("/api/v2/visitingfaculty/faculty", visitingfacultyctlrds.saveFaculty);
 app.post("/api/v2/visitingfaculty/faculty-delete", visitingfacultyctlrds.deleteFaculty);
@@ -5986,6 +6126,14 @@ app.get("/api/v2/visitingfaculty/classes", visitingfacultyctlrds.getClasses);
 app.post("/api/v2/visitingfaculty/classes", visitingfacultyctlrds.saveClass);
 app.post("/api/v2/visitingfaculty/classes-delete", visitingfacultyctlrds.deleteClass);
 app.get("/api/v2/visitingfaculty/payable", visitingfacultyctlrds.getPayable);
+
+const questionpaperstockctlrds = require("./controllers/questionpaperstockctlrds");
+app.get("/api/v2/conductexam/question-paper-stock-options", questionpaperstockctlrds.getStockOptions);
+app.get("/api/v2/conductexam/question-paper-stock", questionpaperstockctlrds.getStock);
+app.post("/api/v2/conductexam/question-paper-stock", questionpaperstockctlrds.saveStock);
+app.post("/api/v2/conductexam/question-paper-stock-delete", questionpaperstockctlrds.deleteStock);
+app.post("/api/v2/conductexam/question-paper-stock-bulk", questionpaperstockctlrds.bulkStock);
+
 app.get("/api/v2/courseassessment/options", courseassessmentctlrds.getCourseAssessmentOptions);
 app.get("/api/v2/courseassessment/ai-options", courseassessmentctlrds.getCourseAssessmentAiOptions);
 app.post("/api/v2/courseassessment/validate-program-ai", courseassessmentctlrds.validateProgramCourseAssessmentWithAi);
