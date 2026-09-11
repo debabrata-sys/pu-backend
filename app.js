@@ -6133,6 +6133,8 @@ app.get("/api/v2/conductexam/question-paper-stock", questionpaperstockctlrds.get
 app.post("/api/v2/conductexam/question-paper-stock", questionpaperstockctlrds.saveStock);
 app.post("/api/v2/conductexam/question-paper-stock-delete", questionpaperstockctlrds.deleteStock);
 app.post("/api/v2/conductexam/question-paper-stock-bulk", questionpaperstockctlrds.bulkStock);
+app.post("/api/v2/conductexam/question-paper-stock-mark-used", questionpaperstockctlrds.markUsed);
+app.get("/api/v2/conductexam/question-paper-stock-unused-report", questionpaperstockctlrds.getUnusedStockReport);
 
 app.get("/api/v2/courseassessment/options", courseassessmentctlrds.getCourseAssessmentOptions);
 app.get("/api/v2/courseassessment/ai-options", courseassessmentctlrds.getCourseAssessmentAiOptions);

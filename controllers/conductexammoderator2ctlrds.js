@@ -11,6 +11,7 @@ const { getExamConfigHelper } = require("./conductexamconfigurationctlrds");
 const ConductExamRateCard = require("../Models/conductexamratecard2ds");
 const { createApprovalTasks, completeApprovalTasks } = require("../utils/approvalTaskHelper");
 const { sendAppointmentLetterEmail } = require("../utils/conductExamAppointmentEmailHelper");
+const { syncPaperToStock } = require("./questionpaperstockctlrds");
 
 const numberToWords = (num) => {
   const a = ["", "One ", "Two ", "Three ", "Four ", "Five ", "Six ", "Seven ", "Eight ", "Nine ", "Ten ", "Eleven ", "Twelve ", "Thirteen ", "Fourteen ", "Fifteen ", "Sixteen ", "Seventeen ", "Eighteen ", "Nineteen "];
@@ -688,6 +689,9 @@ exports.submitModeration = async (req, res) => {
       moderator.declarationdata = declarationdata;
     }
     await moderator.save();
+
+    // Sync to Question Paper Stock with status "Moderated Available"
+    syncPaperToStock(paper, { status: "Moderated Available" }).catch((e) => console.error("Stock sync error on moderation:", e.message));
 
     await ModerationAudit.create({ ...auditBase(moderator, paper, req.body), action: "Final submit", comments: text(req.body.comments) });
     const audit = await ModerationAudit.find({ colid, moderatorid, questionpaperid: paper._id }).sort({ createdAt: -1 }).lean();

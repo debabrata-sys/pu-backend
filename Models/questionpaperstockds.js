@@ -6,6 +6,8 @@ const questionPaperStockSchema = new mongoose.Schema({
   regulation: { type: String, trim: true, default: "" },
   program: { type: String, required: true, trim: true },
   programcode: { type: String, trim: true, default: "" },
+  branch: { type: String, trim: true, default: "" },                // Branch / Speciality
+  dateoflastexam: { type: String, trim: true, default: "" },        // e.g. "Jan-26", "Sep.2022"
   semester: { type: String, required: true, trim: true },
   sno: { type: Number, default: 0 },
   papercode: { type: String, trim: true, default: "" },
@@ -13,15 +15,19 @@ const questionPaperStockSchema = new mongoose.Schema({
   papersettername: { type: String, trim: true, default: "" },
   papercategory: { type: String, trim: true, default: "" },          // A / B / C
   address: { type: String, trim: true, default: "" },
-  mainusedstatus: { type: String, trim: true, default: "" },         // e.g. "Used in Exam Sep, 2020" or "Unused"
-  atktusedstatus: { type: String, trim: true, default: "" },         // e.g. "Used in Exam March, 2023" or "Unused"
+  mainusedstatus: { type: String, trim: true, default: "" },         // e.g. "Used in Exam Sep, 2020", "Moderated Main", "Available Main", " -"
+  atktusedstatus: { type: String, trim: true, default: "" },         // e.g. "Used in Exam March, 2023", "Moderated ATKT", "Available Suppl.", " -"
+  stockmonth: { type: String, trim: true, default: "" },             // Month: e.g. "Dec.", "JAN", "July."
+  stockyear: { type: String, trim: true, default: "" },              // Year: e.g. "2021", "2022"
   stockmonthyear: { type: String, trim: true, default: "" },         // e.g. "Jan-22"
   contactnumber: { type: String, trim: true, default: "" },
   submissionmode: { type: String, trim: true, default: "" },         // Hard Copy / Soft Copy / Both
   examinercode: { type: String, trim: true, default: "" },
   email: { type: String, trim: true, default: "" },
   papertype: { type: String, trim: true, default: "" },             // Main / ATKT
-  status: { type: String, trim: true, default: "Available in soft copy" }, // Available in soft copy / Moderated Main / Moderated ATKT
+  status: { type: String, trim: true, default: "Available Soft copy" }, // Available Soft copy / Moderated Available / Used
+  faculty: { type: String, trim: true, default: "" },                // e.g. "Mgmt"
+  remarks: { type: String, trim: true, default: "" },                // General remark or examiner code
   user: { type: String, trim: true, default: "" }
 }, { timestamps: true });
 

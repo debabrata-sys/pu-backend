@@ -23,6 +23,7 @@ const User = require("../Models/user");
 const ConductExamRateCard = require("../Models/conductexamratecard2ds");
 const { createApprovalTasks, completeApprovalTasks } = require("../utils/approvalTaskHelper");
 const { sendAppointmentLetterEmail } = require("../utils/conductExamAppointmentEmailHelper");
+const { syncPaperToStock } = require("./questionpaperstockctlrds");
 
 const numberToWords = (num) => {
   const a = ["", "One ", "Two ", "Three ", "Four ", "Five ", "Six ", "Seven ", "Eight ", "Nine ", "Ten ", "Eleven ", "Twelve ", "Thirteen ", "Fourteen ", "Fifteen ", "Sixteen ", "Seventeen ", "Eighteen ", "Nineteen "];
@@ -1128,6 +1129,10 @@ exports.saveQuestionPaper = async (req, res) => {
       { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
     );
     await PaperSetter.findOneAndUpdate({ _id: papersetterid, colid }, { status: payload.status });
+
+    // Sync to Question Paper Stock with status "Available Soft copy"
+    syncPaperToStock(data, { status: "Available Soft copy", submissionmode: "Soft Copy" }).catch((e) => console.error("Stock sync error on save:", e.message));
+
     res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -1169,6 +1174,9 @@ exports.submitQuestionPaper = async (req, res) => {
       setter.declarationdata = declarationdata;
     }
     await setter.save();
+
+    // Sync to Question Paper Stock with status "Available Soft copy"
+    syncPaperToStock(paper, { status: "Available Soft copy", submissionmode: "Soft Copy" }).catch((e) => console.error("Stock sync error on submit:", e.message));
 
     res.json({ success: true, data: paper, setter });
   } catch (error) {
