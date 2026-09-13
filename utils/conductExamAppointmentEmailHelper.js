@@ -138,6 +138,7 @@ function generateAppointmentLetterHtml(params) {
     password = "",
     portalUrl = "https://campustechnology.me",
     isModerator = false,
+    isEvaluator = false,
     refNo = "",
     examinerCode = "",
     confNo = "",
@@ -151,10 +152,16 @@ function generateAppointmentLetterHtml(params) {
   const instEmail = institution.email || institution.contactemail || "";
   const instLogo = institution.logo || "";
   const coeName = institution.coename || "";
-  const coeTitle = institution.coetitle || "Assistant Registrar(Confidential)";
+  const coeTitle = isEvaluator
+    ? "Assistant Registrar (Evaluation)"
+    : (institution.coetitle || "Assistant Registrar(Confidential)");
   const vcName = institution.vcname || "";
-  const roleTitle = isModerator ? "Moderator" : "Paper-setter/Examiner";
-  const subjectRole = isModerator ? "Appointment of Moderator" : "Appointment of Paper-Setter";
+  const roleTitle = isEvaluator ? "Evaluator" : isModerator ? "Moderator" : "Paper-setter/Examiner";
+  const subjectRole = isEvaluator
+    ? "Appointment as Evaluator"
+    : isModerator
+    ? "Appointment of Moderator"
+    : "Appointment of Paper-Setter";
 
   const fullPaperTitle = subject && subject !== courseName ? `${subject} (${courseName})` : (courseName || subject || "Course Paper");
   const progSemYear = [
@@ -242,6 +249,60 @@ function generateAppointmentLetterHtml(params) {
     <!-- Letter Body Clauses -->
     <div style="font-size: 13px; line-height: 1.6; color: #111;">
       
+      ${isEvaluator ? `
+      <p style="margin: 0 0 10px 0; text-align: justify;">
+        <strong>1.</strong> With the approval of ${vcName ? `the Vice Chancellor (${vcName})` : "the Vice Chancellor"} of the University, an assignment as <strong>Evaluator</strong> is offered to you for the valuation/evaluation of answer books for:
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; border: 1px solid #374151; margin: 10px 0 14px 0; font-size: 12px;">
+        <thead>
+          <tr style="background-color: #f1f5f9; text-align: center;">
+            <th style="border: 1px solid #374151; padding: 6px; width: 10%;">S.No.</th>
+            <th style="border: 1px solid #374151; padding: 6px; width: 22%;">Paper Code</th>
+            <th style="border: 1px solid #374151; padding: 6px; text-align: left; width: 44%;">Paper Name</th>
+            <th style="border: 1px solid #374151; padding: 6px; width: 24%;">Program / Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="border: 1px solid #374151; padding: 6px; text-align: center;">1.</td>
+            <td style="border: 1px solid #374151; padding: 6px; text-align: center; font-weight: bold;">${courseCode || 'N/A'}</td>
+            <td style="border: 1px solid #374151; padding: 6px;">${fullPaperTitle}</td>
+            <td style="border: 1px solid #374151; padding: 6px; text-align: center;">${progSemYear}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style="margin: 0 0 10px 0; text-align: justify;">
+        <strong>2.</strong> The valuation will commence from <strong>${date}</strong> online on the On-Screen Marking Portal (or Room No. 37, Central Valuation Room, IIIrd floor, Office of COE, Administrative Block, ${instName}).
+      </p>
+
+      <!-- Portal Credentials Box -->
+      <p style="margin: 0 0 4px 0;">
+        <strong>3.</strong> You can access your assigned valuation dashboard and evaluate answer scripts directly via the official portal using the credentials below:
+      </p>
+      <div style="margin: 8px 0 14px 20px; padding: 12px 16px; background-color: #f0fdf4; border-left: 4px solid #16a34a; border-radius: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.6;">
+        <div><strong>Portal URL:</strong> <a href="${portalUrl}" target="_blank" style="color: #15803d; font-weight: bold; text-decoration: underline;">${portalUrl}</a></div>
+        <div><strong>User ID / Login:</strong> <span style="font-family: monospace; font-weight: bold; background: #dcfce7; padding: 2px 6px; border-radius: 3px;">${userId}</span></div>
+        <div><strong>Password:</strong> <span style="font-family: monospace; font-weight: bold; background: #dcfce7; padding: 2px 6px; border-radius: 3px;">${password}</span></div>
+      </div>
+
+      <p style="margin: 0 0 10px 0; text-align: justify;">
+        <strong>4.</strong> You are requested to evaluate minimum 30 answer scripts per day strictly as per the prescribed model answer key and marking scheme.
+      </p>
+
+      <p style="margin: 0 0 10px 0; text-align: justify;">
+        <strong>5.</strong> <strong>Acceptance &amp; Declaration Forms:</strong> Prior to evaluating scripts on the On-Screen Marking portal, you are required to submit the mandatory <strong>Acceptance Form</strong> and <strong>Declaration Form</strong> under On-Screen Marking.
+      </p>
+
+      <p style="margin: 0 0 10px 0; text-align: justify;">
+        <strong>6.</strong> <strong>Remuneration:</strong> Remuneration will be paid as per the approved Examiner Rate Card. Upon completion of marking, please verify your bank particulars and view/submit your <strong>Remuneration Bill</strong> on the portal for timely processing.
+      </p>
+
+      <p style="margin: 0 0 12px 0; text-align: justify;">
+        <strong>7.</strong> Kindly maintain strict confidentiality regarding examinees, scripts, marks awarded, and all valuation records.
+      </p>
+      ` : `
       <p style="margin: 0 0 10px 0; text-align: justify;">
         <strong>1.</strong> With the approval of ${vcName ? `the Vice Chancellor (${vcName})` : "the Vice Chancellor"} of the University, an assignment as <strong>${roleTitle}</strong> is offered to you in; 
         Subject/Paper: <strong>${fullPaperTitle}</strong>, and as Paper Code: <strong>${courseCode || 'N/A'}</strong> 
@@ -280,6 +341,7 @@ function generateAppointmentLetterHtml(params) {
       <p style="margin: 0 0 12px 0; text-align: justify;">
         <strong>7.</strong> The remuneration amount will be transferred to your bank account within 45-60 days from the date of paper receipt.
       </p>
+      `}
 
       <p style="margin: 0 0 20px 0; font-style: italic;">
         Kindly go through the entire points of appointment letter.
@@ -294,7 +356,7 @@ function generateAppointmentLetterHtml(params) {
         <td style="width: 50%; text-align: right; font-size: 13px; line-height: 1.5;">
           Yours faithfully<br/><br/>
           (Signature)<br/><br/>
-          <strong>Assistant Registrar(Confidential)</strong><br/>
+          <strong>${coeTitle}</strong><br/>
           Ph.No.- ${instContact || '0755-4005402'}
         </td>
       </tr>
@@ -302,6 +364,16 @@ function generateAppointmentLetterHtml(params) {
 
     <!-- Remuneration Note & Enclosures -->
     <div style="margin-top: 24px; padding-top: 10px; border-top: 1px dashed #9ca3af; font-size: 11px; color: #374151; line-height: 1.5;">
+      ${isEvaluator ? `
+      <strong><u>Note: Evaluation Instructions:</u></strong><br/>
+      • Valuation per script as per the approved Examiner Rate Card.<br/>
+      • Minimum 30 scripts to be evaluated per day.<br/>
+      • Evaluation must strictly follow prescribed scheme of valuation.<br/><br/>
+      <strong><u>Enclosures:</u></strong><br/>
+      • Acceptance Form &amp; Declaration Form (accessible on On-Screen Marking portal).<br/>
+      • Scheme of valuation / Model answer key.<br/>
+      • Remuneration Bill format.
+      ` : `
       <strong><u>Note: Remuneration Rates:</u></strong><br/>
       • Setting of the one set (i.e., Two Papers—Main and ATKT/Suppl.) of question paper for Diploma/UG = Rs.1000/-<br/>
       • Setting of the one set (i.e., Two Papers—Main and ATKT/Suppl.) of question paper for PG = Rs.1500/-<br/>
@@ -311,6 +383,7 @@ function generateAppointmentLetterHtml(params) {
       • Question Paper Template / Sample Paper (having maximum marks, time duration and pattern).<br/>
       • Syllabus prescribed for the paper.<br/>
       • Acceptance form, Declaration form, Remuneration Bill form.
+      `}
     </div>
 
   </div>
@@ -319,12 +392,13 @@ function generateAppointmentLetterHtml(params) {
 }
 
 /**
- * Sends official appointment letter email to paper setter or moderator.
+ * Sends official appointment letter email to paper setter, moderator, or evaluator.
  */
 async function sendAppointmentLetterEmail({ colid, type = "papersetter", record = {} }) {
-  const isModerator = String(type).toLowerCase().includes("moderator");
-  const recipientName = cleanText(record.papersettername || record.moderatorname || record.name);
-  const recipientEmail = cleanText(record.papersetteremail || record.moderatoremail || record.email).toLowerCase();
+  const isEvaluator = String(type).toLowerCase().includes("evaluat") || String(type).toLowerCase().includes("examiner");
+  const isModerator = !isEvaluator && String(type).toLowerCase().includes("moderator");
+  const recipientName = cleanText(record.examinername || record.papersettername || record.moderatorname || record.name);
+  const recipientEmail = cleanText(record.examineremail || record.papersetteremail || record.moderatoremail || record.email).toLowerCase();
 
   if (!recipientEmail || !/\S+@\S+\.\S+/.test(recipientEmail)) {
     return { success: false, message: "Invalid or missing recipient email address." };
@@ -335,7 +409,7 @@ async function sendAppointmentLetterEmail({ colid, type = "papersetter", record 
   const instName = institution.institutionname || "Institution";
 
   // 2. Ensure / Provision User Account & Retrieve Credentials
-  const userResult = await getOrProvisionUser(colid, recipientName, recipientEmail, "Faculty", record);
+  const userResult = await getOrProvisionUser(colid, recipientName, recipientEmail, isEvaluator ? "Faculty" : "Faculty", record);
   const userId = userResult?.userId || recipientEmail;
   const password = userResult?.password || "Welcome@123";
   const portalUrl = "https://campustechnology.me";
@@ -343,9 +417,11 @@ async function sendAppointmentLetterEmail({ colid, type = "papersetter", record 
   // 3. Generate Reference & Tracking Numbers
   const currentYear = new Date().getFullYear();
   const seq = String(Date.now()).slice(-4);
-  const codePrefix = isModerator ? "MOD" : "PS";
+  const codePrefix = isEvaluator ? "EV" : isModerator ? "MOD" : "PS";
   const instPrefix = (instName || "EXAM").split(/\s+/).map((w) => w[0]).filter(Boolean).join("").slice(0, 4).toUpperCase() || "EXAM";
-  const refNo = `${instPrefix}/COE/Conf/${codePrefix}/${currentYear}/${seq}`;
+  const refNo = isEvaluator
+    ? `${instPrefix}/COE/ER/R/AL/${currentYear}/${seq}`
+    : `${instPrefix}/COE/Conf/${codePrefix}/${currentYear}/${seq}`;
   const examinerCode = `${codePrefix}-${cleanText(record.coursecode || 'EXAM').toUpperCase()}-${seq}`;
   const confNo = `X/${currentYear}/${seq}/A`;
   const letterDate = formatDate();
@@ -369,33 +445,35 @@ async function sendAppointmentLetterEmail({ colid, type = "papersetter", record 
     password,
     portalUrl,
     isModerator,
+    isEvaluator,
     refNo,
     examinerCode,
     confNo,
     date: letterDate
   });
 
-  const subject = `Appointment as ${isModerator ? 'Moderator' : 'Paper-Setter'} - ${record.coursecode || ''} (${instName})`;
+  const subjectRole = isEvaluator ? "Evaluator" : isModerator ? "Moderator" : "Paper-Setter";
+  const subject = `Appointment as ${subjectRole} - ${record.coursecode || ''} (${instName})`;
 
   const plainText = `
 ${instName.toUpperCase()}
 MOST CONFIDENTIAL & URGENT
 Ref. No: ${refNo} | Date: ${letterDate}
 
-Subject: Appointment of ${isModerator ? 'Moderator' : 'Paper-Setter'}
+Subject: Appointment as ${subjectRole}
 To: ${recipientName} (${recipientEmail})
 
 Dear Sir/Madam,
-With the approval of the Vice Chancellor of the University, an assignment as ${isModerator ? 'Moderator' : 'Paper-setter/Examiner'} is offered to you in Subject/Paper: ${record.course || record.subject} (${record.coursecode}) for ${record.program || ''} ${record.semester || ''} ${record.academicyear || ''}.
+With the approval of the Vice Chancellor of the University, an assignment as ${subjectRole} is offered to you for Subject/Paper: ${record.course || record.subject} (${record.coursecode}) for ${record.program || ''} ${record.semester || ''} ${record.academicyear || ''}.
 
 YOUR PORTAL LOGIN CREDENTIALS:
 Portal URL: ${portalUrl}
 User ID: ${userId}
 Password: ${password}
 
-Please log in to https://campustechnology.me to access your assigned paper, question paper templates, and syllabus.
+Please log in to ${portalUrl} to complete your acceptance form, sign the declaration, and conduct evaluation under On-Screen Marking.
 
-${coeTitle} Office
+${isEvaluator ? 'Assistant Registrar (Evaluation)' : 'Office of COE'}
 ${instName}
 `;
 

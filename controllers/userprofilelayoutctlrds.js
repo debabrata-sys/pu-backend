@@ -339,3 +339,63 @@ exports.updateProfilePhoto = async (req, res) => {
     res.status(500).json({ msg: err.message });
   }
 };
+
+exports.bulkSaveLayouts = async (req, res) => {
+  try {
+    const colid = Number(req.body.colid);
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    if (!colid) return res.status(400).json({ msg: 'colid is required', message: 'colid is required' });
+    if (!rows.length) return res.status(400).json({ msg: 'No rows provided', message: 'No rows provided' });
+
+    let saved = 0;
+    const errors = [];
+    const operations = [];
+
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index];
+      const rowNumber = index + 2;
+      const role = clean(row.role || row.Role);
+      const field = clean(row.field || row.Field);
+      const label = clean(row.label || row.Label);
+
+      if (!role || !field || !label) {
+        errors.push({ row: rowNumber, message: 'Role, field and label are required' });
+        continue;
+      }
+
+      const payload = {
+        colid,
+        role,
+        field,
+        label,
+        source: clean(row.source || row.Source) === 'custom' ? 'custom' : 'user',
+        tab: clean(row.tab || row.Tab) || 'Profile',
+        taborder: Number(row.taborder ?? row['Tab order'] ?? row.TabOrder ?? 0),
+        order: Number(row.order ?? row['Field order'] ?? row.FieldOrder ?? row.Order ?? 0),
+        editable: clean(row.editable || row.Editable) || 'No',
+        visible: clean(row.visible || row.Visible) || 'Yes',
+        type: clean(row.type || row.Type) || 'text',
+        options: normalizeOptions(row.options || row.Options),
+        user: clean(req.body.user)
+      };
+
+      operations.push({
+        updateOne: {
+          filter: { colid, role, field },
+          update: { $set: payload },
+          upsert: true
+        }
+      });
+    }
+
+    if (operations.length > 0) {
+      const result = await UserProfileLayout.bulkWrite(operations);
+      saved = (result.upsertedCount || 0) + (result.modifiedCount || 0);
+    }
+
+    const msg = `Bulk upload completed. Saved/updated: ${saved}${errors.length ? `, errors: ${errors.length}` : ''}`;
+    res.json({ msg, message: msg, saved, errors });
+  } catch (err) {
+    res.status(500).json({ msg: err.message, message: err.message });
+  }
+};

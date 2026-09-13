@@ -1,5 +1,5 @@
 const ConductExamRateCard = require("../Models/conductexamratecard2ds");
-const ConductExamExaminerAllotment = require("../Models/conductexamexaminerallotmentds");
+const ConductExamExaminerAllotment = require("../Models/conductexamexaminerallotment2ds");
 const ConductExamQuestionPaper = require("../Models/conductexamquestionpaper2ds");
 const ConductExamModerator = require("../Models/conductexammoderator2ds");
 const ConductExamPaperSetter = require("../Models/conductexampapersetter2ds");
