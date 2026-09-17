@@ -1,3 +1,10 @@
+const dns = require('dns');
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {
+  console.warn('DNS server override error:', e.message);
+}
+
 const express = require('express');
 const jwt=require('jsonwebtoken');
 //const env=require('config');
@@ -44,9 +51,15 @@ const DB = (process.env.DATABASE || 'mongodb://127.0.0.1:27017/ep3').replace('<P
 const DB1 = process.env.DATABASE2 || DB || 'mongodb://127.0.0.1:27017/ep3';
 
 mongoose.connect(DB1).then(con => {
-    console.log('[DB]: Local MongoDB Connected successfully to ' + DB1);
+    console.log('[DB]: MongoDB Connected successfully to ' + DB1);
 }).catch(err => {
-    console.error('[DB]: MongoDB connection error:', err);
+    console.error('[DB]: MongoDB Atlas connection error:', err);
+    console.log('[DB]: Attempting fallback to local MongoDB...');
+    mongoose.connect('mongodb://127.0.0.1:27017/ep3').then(() => {
+        console.log('[DB]: Fallback local MongoDB Connected successfully.');
+    }).catch(localErr => {
+        console.error('[DB]: Local MongoDB connection also failed:', localErr);
+    });
 });
 
 // mongoose.connect(DB1, {
