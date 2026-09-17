@@ -1,6 +1,9 @@
 const reevaluationds1 = require('../Models/reevaluationds1.js');
 const exammarks2ds = require('../Models/exammarks2ds.js');
 const examinerconfigds = require('../Models/examinerconfigds.js');
+const conductexamexaminerallotment2ds = require('../Models/conductexamexaminerallotment2ds.js');
+const conductexamonscreenmark2ds = require('../Models/conductexamonscreenmark2ds.js');
+const User = require('../Models/user.js');
 
 // Helper to calculate percentage increase
 function calculateincrementds(original, newmark) {
@@ -30,11 +33,12 @@ exports.applyreevaluationds1 = async (req, res) => {
 
         // Check current application count for student for this program/year/semester
         const currentcount = await reevaluationds1.countDocuments({
-            student,
+            $or: [
+                { student, regno },
+                { regno }
+            ],
             program: program || papers[0]?.program,
-            year: papers[0]?.year,
-            semester: papers[0]?.semester,
-            colid: Number(colid) // ✅ Add colid filter
+            colid: Number(colid)
         });
 
         if (currentcount + papers.length > 2) {
@@ -44,32 +48,30 @@ exports.applyreevaluationds1 = async (req, res) => {
         // Create applications for each paper requested
         for (const paper of papers) {
             const existing = await reevaluationds1.findOne({
-                student,
+                regno,
                 papercode: paper.papercode,
                 examcode: paper.examcode,
-                year: paper.year,
-                semester: paper.semester,
-                colid: Number(colid) // ✅ Add colid filter
+                colid: Number(colid)
             });
 
             if (!existing) {
                 const newapp = new reevaluationds1({
-                    student,
+                    student: student || req.body.name,
                     regno,
-                    name: req.body.name,
+                    name: req.body.name || student,
                     user: req.body.user,
-                    colid: Number(colid), // ✅ colid as Number
+                    colid: Number(colid),
                     program: paper.program || program,
                     examcode: paper.examcode,
-                    month: paper.month,
-                    year: paper.year,
-                    regulation: paper.regulation,
-                    semester: paper.semester,
-                    branch: paper.branch,
+                    month: paper.month || 'June',
+                    year: paper.year || '2026',
+                    regulation: paper.regulation || 'R2020',
+                    semester: paper.semester || '1',
+                    branch: paper.branch || 'General',
                     papercode: paper.papercode,
                     papername: paper.papername,
                     originalmarks: paper.originalmarks,
-                    maxmarks: paper.maxmarks,
+                    maxmarks: paper.maxmarks || 100,
                     examiner1status: 'pending',
                     examiner2status: 'pending',
                     examiner3status: 'pending',
@@ -82,11 +84,12 @@ exports.applyreevaluationds1 = async (req, res) => {
 
         res.status(200).json({ message: 'reevaluation applications submitted successfully.' });
     } catch (err) {
-        // res.status(500).json({ error: err.message });
+        console.error('applyreevaluationds1 error:', err);
+        res.status(500).json({ error: err.message });
     }
 };
 
-// Get all papers for a student from exammarks2ds
+// Get all papers for a student from exammarks2ds or conductexamexaminerallotment2ds
 exports.getallpapersforstudentds1 = async (req, res) => {
     try {
         const { regno, program, branch, regulation, semester, year, colid } = req.query;
@@ -98,14 +101,82 @@ exports.getallpapersforstudentds1 = async (req, res) => {
         if (regulation) filter.regulation = regulation;
         if (semester) filter.semester = semester;
         if (year) filter.year = year;
-        if (colid) filter.colid = Number(colid); // ✅ colid as Number
+        if (colid) filter.colid = Number(colid);
         
         filter.thmax = { $gt: 0 }; // Only papers with theory component
 
-        const papers = await exammarks2ds.find(filter);
-        res.status(200).json(papers);
+        let papers = await exammarks2ds.find(filter).lean();
+        if (papers && papers.length > 0) {
+            return res.status(200).json(papers);
+        }
+
+        // Fallback: If no papers in exammarks2ds, search conductexamexaminerallotment2ds
+        if (regno) {
+            const allotFilter = { regno };
+            if (colid) allotFilter.colid = Number(colid);
+            if (semester) allotFilter.semester = String(semester);
+            if (program) {
+                allotFilter.$or = [
+                    { program: program },
+                    { programcode: program }
+                ];
+            }
+
+            const allotments = await conductexamexaminerallotment2ds.find(allotFilter).lean();
+
+            if (allotments && allotments.length > 0) {
+                const onscreenMarks = await conductexamonscreenmark2ds.find({
+                    regno,
+                    ...(colid ? { colid: Number(colid) } : {})
+                }).lean();
+
+                const marksByCourse = {};
+                for (const m of onscreenMarks) {
+                    const code = m.coursecode || '';
+                    if (!marksByCourse[code]) {
+                        marksByCourse[code] = { total: 0, max: 0 };
+                    }
+                    marksByCourse[code].total += (Number(m.marks) || 0);
+                    marksByCourse[code].max += (Number(m.maxmarks) || 0);
+                }
+
+                const mappedPapers = allotments.map(allot => {
+                    const courseCode = allot.coursecode;
+                    const markInfo = marksByCourse[courseCode] || { total: 0, max: 0 };
+                    const thobtained = allot.totalmarksobtained != null ? allot.totalmarksobtained : markInfo.total;
+                    const thmax = markInfo.max >= 100 ? markInfo.max : 100;
+
+                    return {
+                        _id: allot._id,
+                        name: allot.student,
+                        student: allot.student,
+                        user: allot.email || allot.user,
+                        colid: allot.colid,
+                        regno: allot.regno,
+                        program: allot.program || allot.programcode,
+                        programcode: allot.programcode,
+                        examcode: allot.examcode,
+                        month: allot.examdate ? new Date(allot.examdate).toLocaleString('default', { month: 'long' }) : 'June',
+                        year: allot.academicyear ? allot.academicyear.split('-')[0] : '2026',
+                        regulation: allot.regulation || 'R2020',
+                        semester: allot.semester || '1',
+                        branch: allot.subject || allot.type || 'General',
+                        papercode: allot.coursecode,
+                        papername: allot.course,
+                        thmax: thmax,
+                        thobtained: thobtained,
+                        source: 'conductexam2'
+                    };
+                });
+
+                return res.status(200).json(mappedPapers);
+            }
+        }
+
+        res.status(200).json([]);
     } catch (err) {
-        // res.status(500).json({ error: err.message });
+        console.error('getallpapersforstudentds1 error:', err);
+        res.status(500).json({ error: err.message });
     }
 };
 
@@ -120,33 +191,119 @@ exports.getmyapplicationsds1 = async (req, res) => {
         const applications = await reevaluationds1.find(filter).sort({ applieddate: -1 });
         res.status(200).json(applications);
     } catch (err) {
-        // res.status(500).json({ error: err.message });
+        console.error('getmyapplicationsds1 error:', err);
+        res.status(500).json({ error: err.message });
     }
 };
 
-// Get filter options for STUDENT (from exammarks2ds)
+// Get filter options for STUDENT (from exammarks2ds, conductexamexaminerallotment2ds, and User)
 exports.getfilteroptionsforstudentds1 = async (req, res) => {
     try {
-        const { colid } = req.query;
+        const { colid, regno } = req.query;
         
         const filter = {};
-        if (colid) filter.colid = Number(colid); // ✅ Add colid filter
+        if (colid) filter.colid = Number(colid);
         
-        const programs = await exammarks2ds.distinct('program', filter);
-        const branches = await exammarks2ds.distinct('branch', filter);
-        const regulations = await exammarks2ds.distinct('regulation', filter);
-        const semesters = await exammarks2ds.distinct('semester', filter);
-        const years = await exammarks2ds.distinct('year', filter);
+        const [programs, branches, regulations, semesters, years] = await Promise.all([
+            exammarks2ds.distinct('program', filter).catch(() => []),
+            exammarks2ds.distinct('branch', filter).catch(() => []),
+            exammarks2ds.distinct('regulation', filter).catch(() => []),
+            exammarks2ds.distinct('semester', filter).catch(() => []),
+            exammarks2ds.distinct('year', filter).catch(() => [])
+        ]);
+
+        const allotFilter = {};
+        if (colid) allotFilter.colid = Number(colid);
+
+        const [
+            allotPrograms,
+            allotProgramCodes,
+            allotRegulations,
+            allotSemesters,
+            allotAcademicYears,
+            allotSubjects
+        ] = await Promise.all([
+            conductexamexaminerallotment2ds.distinct('program', allotFilter).catch(() => []),
+            conductexamexaminerallotment2ds.distinct('programcode', allotFilter).catch(() => []),
+            conductexamexaminerallotment2ds.distinct('regulation', allotFilter).catch(() => []),
+            conductexamexaminerallotment2ds.distinct('semester', allotFilter).catch(() => []),
+            conductexamexaminerallotment2ds.distinct('academicyear', allotFilter).catch(() => []),
+            conductexamexaminerallotment2ds.distinct('subject', allotFilter).catch(() => [])
+        ]);
+
+        const userFilter = {};
+        if (colid) userFilter.colid = Number(colid);
+
+        const [
+            userPrograms,
+            userProgramCodes,
+            userRegulations,
+            userSemesters,
+            userAcademicYears
+        ] = await Promise.all([
+            User.distinct('program', userFilter).catch(() => []),
+            User.distinct('programcode', userFilter).catch(() => []),
+            User.distinct('regulation', userFilter).catch(() => []),
+            User.distinct('semester', userFilter).catch(() => []),
+            User.distinct('academicyear', userFilter).catch(() => [])
+        ]);
+
+        const isValid = (val) => {
+            if (!val) return false;
+            const s = String(val).trim();
+            return s !== '' && s !== '-' && s !== 'NA' && s !== 'null' && s !== 'undefined';
+        };
+
+        const combinedPrograms = [...new Set([
+            ...programs,
+            ...allotPrograms,
+            ...allotProgramCodes,
+            ...userPrograms,
+            ...userProgramCodes
+        ])].filter(isValid);
+
+        const combinedRegulations = [...new Set([
+            ...regulations,
+            ...allotRegulations,
+            ...userRegulations
+        ])].filter(isValid);
+
+        const rawSemesters = [...new Set([
+            ...semesters,
+            ...allotSemesters,
+            ...userSemesters,
+            '1', '2', '3', '4', '5', '6', '7', '8'
+        ])].filter(isValid);
+
+        // Keep only valid semester identifiers (digits 1-12 or roman numerals I-X)
+        const combinedSemesters = rawSemesters.filter(s => {
+            const num = Number(s);
+            return (!isNaN(num) && num >= 1 && num <= 12) || ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'].includes(s);
+        }).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+
+        const combinedYears = [...new Set([
+            ...years,
+            ...allotAcademicYears.map(y => y ? y.split('-')[0] : y),
+            ...userAcademicYears.map(y => y ? y.split('-')[0] : y),
+            '2026', '2025', '2024'
+        ])].filter(isValid).sort((a, b) => b.localeCompare(a));
+
+        const combinedBranches = [...new Set([
+            ...branches,
+            ...allotSubjects,
+            'General'
+        ])].filter(isValid);
 
         res.status(200).json({
-            programs,
-            years,
-            semesters,
-            branches,
-            regulations
+            programs: combinedPrograms,
+            years: combinedYears,
+            semesters: combinedSemesters,
+            branches: combinedBranches,
+            regulations: combinedRegulations
         });
     } catch (err) {
-        // res.status(500).json({ error: err.message });
+        console.error('getfilteroptionsforstudentds1 error:', err);
+        res.status(500).json({ error: err.message });
     }
 };
 
