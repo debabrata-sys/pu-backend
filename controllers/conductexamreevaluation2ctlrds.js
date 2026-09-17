@@ -6,6 +6,7 @@ const ConductExamAnswerBook = require("../Models/conductexamanswerbook2ds");
 const NepLmsAssessmentMarks = require("../Models/neplmsassessmentmarksds");
 const ConductExamOnScreenMark = require("../Models/conductexamonscreenmark2ds");
 const reevaluationds1 = require("../Models/reevaluationds1");
+const User = require("../Models/user");
 
 const text = (v) => String(v || "").trim();
 const colNumber = (v) => {
@@ -107,9 +108,16 @@ exports.getOptions = async (req, res) => {
     const colid = colNumber(req.query.colid);
     if (colid === undefined) return res.status(400).json({ success: false, message: "colid is required" });
 
-    const [allotments, examiners] = await Promise.all([
+    const [allotments, examiners, facultyUsers] = await Promise.all([
       ConductExamExaminerAllotment.find({ colid }).sort({ academicyear: -1, exam: 1, course: 1 }).lean(),
-      ConductExamExaminer.find({ colid, status: /^Active$/i }).sort({ name: 1 }).lean()
+      ConductExamExaminer.find({ colid }).sort({ examinername: 1 }).lean(),
+      User.find({
+        colid,
+        $or: [
+          { role: { $in: ["Faculty", "phdexaminer", "AR Evaluation", "Examiner", "Evaluator", "CF", "UF", "OE", "PE", "SPE", "COE", "Exam", "Guide", "Admin"] } },
+          { designation: { $regex: /professor|lecturer|faculty|evaluator|examiner|reader/i } }
+        ]
+      }).select("name email role designation department employeeid regno code").sort({ name: 1 }).lean()
     ]);
 
     const academicyears = uniq(allotments.map((a) => a.academicyear));
@@ -126,12 +134,40 @@ exports.getOptions = async (req, res) => {
       return { coursecode, course, examcode, programcode };
     });
 
-    const evaluatorList = examiners.map((e) => ({
-      evaluatorid: text(e.examinercode || e.code || e.employeeid || e.email?.split("@")[0].toUpperCase()),
-      name: text(e.name || e.examinername),
-      email: text(e.email || e.examineremail),
-      institution: text(e.institution || e.collegename || e.department || "University")
-    }));
+    const evaluatorMap = new Map();
+
+    // 1. Add ConductExamExaminer records
+    examiners.forEach((e) => {
+      const email = text(e.examineremail || e.email);
+      if (!email) return;
+      const key = email.toLowerCase();
+      evaluatorMap.set(key, {
+        evaluatorid: text(e.examinercode || e.code || e.employeeid || email.split("@")[0].toUpperCase()),
+        name: text(e.examinername || e.name || email),
+        email: email,
+        institution: text(e.institute || e.acceptancedata?.working_institute || e.department || e.collegename || "People's University")
+      });
+    });
+
+    // 2. Add Faculty & Evaluation Staff Users
+    facultyUsers.forEach((u) => {
+      const email = text(u.email || u.username);
+      if (!email) return;
+      const key = email.toLowerCase();
+      if (!evaluatorMap.has(key)) {
+        const rawReg = text(u.regno);
+        const validReg = rawReg && rawReg.toUpperCase() !== "NA" ? rawReg : "";
+        const idVal = text(u.employeeid || validReg || u.code || u.designation || u.role || email.split("@")[0]).toUpperCase();
+        evaluatorMap.set(key, {
+          evaluatorid: idVal,
+          name: text(u.name || email),
+          email: email,
+          institution: text(u.department || u.designation || "People's University")
+        });
+      }
+    });
+
+    const evaluatorList = Array.from(evaluatorMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
     res.json({
       success: true,
