@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const ConductExamQuestionPaper = require("../Models/conductexamquestionpaper2ds");
 const ConductExamScoreRule = require("../Models/conductexamscorerule2ds");
 const ConductExamOnScreenMark = require("../Models/conductexamonscreenmark2ds");
@@ -60,16 +61,57 @@ const validateRule = (item) => {
 };
 
 const resolvePaper = async (paperid, colid) => {
-  let paper = await ConductExamQuestionPaper.findOne({ _id: paperid, colid }).lean();
-  if (!paper) {
-    const ConductExamQuestionPaperV1 = require("../Models/conductexamquestionpaperds");
-    paper = await ConductExamQuestionPaperV1.findOne({ _id: paperid, colid }).lean();
+  let paper = null;
+  if (mongoose.isValidObjectId(paperid)) {
+    paper = await ConductExamQuestionPaper.findOne({ _id: paperid, colid }).lean();
+    if (!paper) {
+      const ConductExamQuestionPaperV1 = require("../Models/conductexamquestionpaperds");
+      paper = await ConductExamQuestionPaperV1.findOne({ _id: paperid, colid }).lean();
+    }
   }
   if (!paper && paperid) {
     paper = await ConductExamQuestionPaper.findOne({ coursecode: paperid, colid }).lean();
   }
-  if (!paper) {
+  if (!paper && paperid) {
+    const ConductExamQuestionPaperV1 = require("../Models/conductexamquestionpaperds");
+    paper = await ConductExamQuestionPaperV1.findOne({ coursecode: paperid, colid }).lean();
+  }
+  if (!paper && mongoose.isValidObjectId(paperid)) {
     const allot = await ConductExamExaminerAllotment.findOne({ _id: paperid, colid }).lean();
+    if (allot) {
+      paper = {
+        _id: allot._id,
+        colid,
+        academicyear: allot.academicyear,
+        exam: allot.exam,
+        examcode: allot.examcode,
+        regulation: allot.regulation,
+        program: allot.program,
+        programcode: allot.programcode,
+        type: allot.type,
+        subject: allot.subject,
+        semester: allot.semester,
+        course: allot.course,
+        coursecode: allot.coursecode,
+        status: "InvigilatorSubmitted",
+        sections: [
+          {
+            _id: allot._id,
+            title: "General Evaluation",
+            questions: [
+              {
+                _id: allot._id,
+                question: "Question 1 / Script Evaluation",
+                marks: 100
+              }
+            ]
+          }
+        ]
+      };
+    }
+  }
+  if (!paper && paperid) {
+    const allot = await ConductExamExaminerAllotment.findOne({ coursecode: paperid, colid }).lean();
     if (allot) {
       paper = {
         _id: allot._id,
