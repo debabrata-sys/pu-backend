@@ -9,6 +9,9 @@ const CourseAssessment = require("../Models/courseassessmentds");
 const NepLmsAssessmentMarks = require("../Models/neplmsassessmentmarksds");
 const ConductExamReevaluation = require("../Models/conductexamreevaluation2ds");
 
+// Ensure legacy index without valuationtype is removed from MongoDB
+ConductExamOnScreenMark.collection.dropIndex("colid_1_paperid_1_regno_1_questionid_1").catch(() => {});
+
 const text = (value) => String(value || "").trim();
 const number = (value) => {
   const parsed = Number(value);
@@ -955,9 +958,11 @@ exports.finalizeStudent = async (req, res) => {
     const student = req.body.student || {};
     if (colid === undefined || !paperid || !text(student.regno)) return res.status(400).json({ success: false, message: "colid, paper and student are required" });
 
+    const valuationtype = text(req.body.valuationtype || student.valuationtype || "V1");
+
     const [paper, marks, assessment] = await Promise.all([
       resolvePaper(paperid, colid),
-      ConductExamOnScreenMark.find({ colid, paperid, regno: text(student.regno) }).lean(),
+      ConductExamOnScreenMark.find({ colid, paperid, regno: text(student.regno), valuationtype }).lean(),
       CourseAssessment.findOne({
         colid,
         scoretype: /^External$/i,
@@ -1022,13 +1027,16 @@ exports.finalizeStudent = async (req, res) => {
       colid,
       user: text(req.body.user)
     };
-    await NepLmsAssessmentMarks.findOneAndUpdate(
-      { colid, academicyear: payload.academicyear, semester: payload.semester, coursecode: payload.coursecode, assessmentcomponent: payload.assessmentcomponent, assessmentgroup: payload.assessmentgroup, regno: payload.regno },
-      payload,
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    await ConductExamOnScreenMark.updateMany({ colid, paperid, regno: payload.regno }, { $set: { finalized: "Yes" } });
-    const valuationtype = text(req.body.valuationtype || student.valuationtype || "V1");
+
+    if (valuationtype === "V1") {
+      await NepLmsAssessmentMarks.findOneAndUpdate(
+        { colid, academicyear: payload.academicyear, semester: payload.semester, coursecode: payload.coursecode, assessmentcomponent: payload.assessmentcomponent, assessmentgroup: payload.assessmentgroup, regno: payload.regno },
+        payload,
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    await ConductExamOnScreenMark.updateMany({ colid, paperid, regno: payload.regno, valuationtype }, { $set: { finalized: "Yes" } });
 
     if (valuationtype !== "V1") {
       const reval = await ConductExamReevaluation.findOne({
