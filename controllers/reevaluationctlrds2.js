@@ -203,6 +203,7 @@ exports.getfilteroptionsforstudentds1 = async (req, res) => {
         
         const filter = {};
         if (colid) filter.colid = Number(colid);
+        if (regno) filter.regno = String(regno).trim(); // ✅ Restrict to student
         
         const [programs, branches, regulations, semesters, years] = await Promise.all([
             exammarks2ds.distinct('program', filter).catch(() => []),
@@ -214,6 +215,7 @@ exports.getfilteroptionsforstudentds1 = async (req, res) => {
 
         const allotFilter = {};
         if (colid) allotFilter.colid = Number(colid);
+        if (regno) allotFilter.regno = String(regno).trim(); // ✅ Restrict to student
 
         const [
             allotPrograms,
@@ -233,6 +235,7 @@ exports.getfilteroptionsforstudentds1 = async (req, res) => {
 
         const userFilter = {};
         if (colid) userFilter.colid = Number(colid);
+        if (regno) userFilter.regno = String(regno).trim(); // ✅ Restrict to student
 
         const [
             userPrograms,
@@ -271,12 +274,11 @@ exports.getfilteroptionsforstudentds1 = async (req, res) => {
         const rawSemesters = [...new Set([
             ...semesters,
             ...allotSemesters,
-            ...userSemesters,
-            '1', '2', '3', '4', '5', '6', '7', '8'
+            ...userSemesters
         ])].filter(isValid);
 
-        // Keep only valid semester identifiers (digits 1-12 or roman numerals I-X)
-        const combinedSemesters = rawSemesters.filter(s => {
+        // Keep only valid semester identifiers
+        const validSemesters = rawSemesters.filter(s => {
             const num = Number(s);
             return (!isNaN(num) && num >= 1 && num <= 12) || ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'].includes(s);
         }).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
@@ -284,22 +286,20 @@ exports.getfilteroptionsforstudentds1 = async (req, res) => {
         const combinedYears = [...new Set([
             ...years,
             ...allotAcademicYears.map(y => y ? y.split('-')[0] : y),
-            ...userAcademicYears.map(y => y ? y.split('-')[0] : y),
-            '2026', '2025', '2024'
+            ...userAcademicYears.map(y => y ? y.split('-')[0] : y)
         ])].filter(isValid).sort((a, b) => b.localeCompare(a));
 
         const combinedBranches = [...new Set([
             ...branches,
-            ...allotSubjects,
-            'General'
+            ...allotSubjects
         ])].filter(isValid);
 
         res.status(200).json({
             programs: combinedPrograms,
-            years: combinedYears,
-            semesters: combinedSemesters,
-            branches: combinedBranches,
-            regulations: combinedRegulations
+            years: combinedYears.length > 0 ? combinedYears : ['2026'],
+            semesters: validSemesters.length > 0 ? validSemesters : ['1'],
+            branches: combinedBranches.length > 0 ? combinedBranches : ['General'],
+            regulations: combinedRegulations.length > 0 ? combinedRegulations : ['R2020']
         });
     } catch (err) {
         console.error('getfilteroptionsforstudentds1 error:', err);
