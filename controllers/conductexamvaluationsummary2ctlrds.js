@@ -82,18 +82,28 @@ exports.getStatusSummaryReport = async (req, res) => {
       // Re-evaluations for this course
       const courseRevals = revalMap.get(grp.coursecode) || [];
       const revalApplied = courseRevals.length;
-      const v2Valuated = courseRevals.filter((r) => r.reevaluator1?.status === "Evaluated").length;
+      const v2Valuated = courseRevals.filter((r) => r.reevaluator1?.status === "Evaluated" || (r.reevaluator1?.marks !== null && r.reevaluator1?.marks !== undefined)).length;
       const v2Afv = Math.max(0, revalApplied - v2Valuated); // V2 Pendency / AFV
 
-      const v3Valuated = courseRevals.filter((r) => r.reevaluator2?.status === "Evaluated").length;
+      const v3Valuated = courseRevals.filter((r) => r.reevaluator2?.status === "Evaluated" || (r.reevaluator2?.marks !== null && r.reevaluator2?.marks !== undefined)).length;
       const v3Afv = Math.max(0, revalApplied - v3Valuated); // V3 Pendency / AFV
 
       const v4Referred = courseRevals.filter(
-        (r) => r.stage === "V3" || r.decision === "Referred to V4" || (r.reevaluator3 && r.reevaluator3.evaluatorId)
+        (r) => r.stage === "V3" || r.decision === "Referred to V4" || (r.reevaluator3 && (r.reevaluator3.evaluatorId || r.reevaluator3.email))
       );
-      const v4Valuated = courseRevals.filter((r) => r.reevaluator3?.status === "Evaluated").length;
+      const v4Valuated = courseRevals.filter((r) => r.reevaluator3?.status === "Evaluated" || (r.reevaluator3?.marks !== null && r.reevaluator3?.marks !== undefined)).length;
       const v4Pendency = Math.max(0, v4Referred.length - v4Valuated); // V4 Pendency
       const revalCompleted = courseRevals.filter((r) => r.status === "Completed").length;
+
+      const canViewV1AwardList = v1Valuated > 0;
+      const canViewV2AwardList = revalApplied > 0 && v2Valuated > 0;
+      const canViewV3AwardList = revalApplied > 0 && v3Valuated > 0;
+      const canViewV4AwardList = revalApplied > 0 && v4Valuated > 0;
+
+      const awardListV1Url = `/conduct-exam-2-award-list?examcode=${encodeURIComponent(grp.examcode)}&coursecode=${encodeURIComponent(grp.coursecode)}&academicyear=${encodeURIComponent(grp.academicyear || "")}&valuationtype=V1`;
+      const awardListV2Url = `/conduct-exam-2-award-list?examcode=${encodeURIComponent(grp.examcode)}&coursecode=${encodeURIComponent(grp.coursecode)}&academicyear=${encodeURIComponent(grp.academicyear || "")}&valuationtype=V2`;
+      const awardListV3Url = `/conduct-exam-2-award-list?examcode=${encodeURIComponent(grp.examcode)}&coursecode=${encodeURIComponent(grp.coursecode)}&academicyear=${encodeURIComponent(grp.academicyear || "")}&valuationtype=V3`;
+      const awardListV4Url = `/conduct-exam-2-award-list?examcode=${encodeURIComponent(grp.examcode)}&coursecode=${encodeURIComponent(grp.coursecode)}&academicyear=${encodeURIComponent(grp.academicyear || "")}&valuationtype=V4`;
 
       rows.push({
         sno: sno++,
@@ -122,7 +132,15 @@ exports.getStatusSummaryReport = async (req, res) => {
         v4Afv: v4Pendency,
         revalCompleted,
         isAllV1Complete: v1Valuated >= totalScripts && totalScripts > 0,
-        awardListUrl: `/conduct-exam-2-award-list?examcode=${encodeURIComponent(grp.examcode)}&coursecode=${encodeURIComponent(grp.coursecode)}`
+        canViewV1AwardList,
+        canViewV2AwardList,
+        canViewV3AwardList,
+        canViewV4AwardList,
+        awardListV1Url,
+        awardListV2Url,
+        awardListV3Url,
+        awardListV4Url,
+        awardListUrl: awardListV1Url
       });
     });
 

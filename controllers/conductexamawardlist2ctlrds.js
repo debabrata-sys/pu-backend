@@ -5,6 +5,7 @@ const ConductExamOnScreenMark = require("../Models/conductexamonscreenmarkds");
 const ConductExamQuestionPaper = require("../Models/conductexamquestionpaper2ds");
 const ConductExamConfiguration = require("../Models/conductexamconfigurationds");
 const NepLmsAssessmentMarks = require("../Models/neplmsassessmentmarksds");
+const ConductExamReevaluation = require("../Models/conductexamreevaluation2ds");
 
 const text = (value) => String(value || "").trim();
 const colNumber = (value) => {
@@ -77,12 +78,20 @@ exports.getOptions = async (req, res) => {
       return { coursecode, course, examcode, programcode };
     });
 
+    const valuationtypes = [
+      { valuationtype: "V1", label: "Initial Valuation (V1)" },
+      { valuationtype: "V2", label: "Re-evaluation 1 (V2)" },
+      { valuationtype: "V3", label: "Re-evaluation 2 (V3)" },
+      { valuationtype: "V4", label: "Re-evaluation 3 (V4)" }
+    ];
+
     res.json({
       success: true,
       academicyears,
       exams,
       programs,
-      courses
+      courses,
+      valuationtypes
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -101,13 +110,10 @@ exports.getAwardList = async (req, res) => {
       return res.status(400).json({ success: false, message: "examcode and coursecode are required" });
     }
 
+    const valuationtype = text(req.query.valuationtype || "V1").toUpperCase();
+
     const filter = { colid, examcode, coursecode };
     if (text(req.query.academicyear)) filter.academicyear = text(req.query.academicyear);
-
-    let allotments = await ConductExamExaminerAllotment.find(filter).sort({ regno: 1, student: 1 }).lean();
-    if (!allotments.length) {
-      allotments = await ConductExamExaminerAllotment.find({ colid, coursecode }).sort({ regno: 1, student: 1 }).lean();
-    }
 
     const answerBooks = await ConductExamAnswerBook.find({ colid, coursecode }).lean();
     const bookMap = new Map();
@@ -128,74 +134,164 @@ exports.getAwardList = async (req, res) => {
       if (secSum > 0) maxMarks = secSum;
     }
 
-    const assessmentMarks = await NepLmsAssessmentMarks.find({ colid, coursecode }).lean();
-    const assessMap = new Map();
-    assessmentMarks.forEach((m) => {
-      assessMap.set(m.regno, m);
-    });
+    let students = [];
+    let sampleRecord = {};
+    let valLabel = "Initial Valuation (V1)";
 
-    const onScreenMarks = await ConductExamOnScreenMark.find({ colid, coursecode }).lean();
-    const markGroup = new Map();
-    onScreenMarks.forEach((m) => {
-      if (!markGroup.has(m.regno)) markGroup.set(m.regno, []);
-      markGroup.get(m.regno).push(m);
-    });
+    if (valuationtype === "V2" || valuationtype === "V3" || valuationtype === "V4") {
+      const revalFilter = { colid, examcode, coursecode };
+      if (text(req.query.academicyear)) revalFilter.academicyear = text(req.query.academicyear);
 
-    const sampleAllot = allotments[0] || rolls[0] || {};
-
-    const students = allotments.map((allot, index) => {
-      const book = bookMap.get(allot.regno);
-      const roll = rollMap.get(allot.regno);
-      const assess = assessMap.get(allot.regno);
-      const marksList = markGroup.get(allot.regno) || [];
-
-      let marksobtained = 0;
-      if (allot.totalmarksobtained !== null && allot.totalmarksobtained !== undefined) {
-        marksobtained = Number(allot.totalmarksobtained);
-      } else if (assess?.marksobtained !== undefined && assess?.marksobtained !== null) {
-        marksobtained = Number(assess.marksobtained);
-      } else if (marksList.length > 0) {
-        marksobtained = marksList.reduce((sum, item) => sum + (Number(item.marks) || 0), 0);
+      const revals = await ConductExamReevaluation.find(revalFilter).sort({ regno: 1, student: 1 }).lean();
+      if (!revals.length) {
+        return res.status(400).json({
+          success: false,
+          message: "No student applied for re-evaluation in this course."
+        });
       }
 
-      const cn = text(book?.cn || allot.cn || roll?.cn || (631580 + index + 1));
+      let evalKey = "reevaluator1";
+      let evalRoleTitle = "Re-evaluator 1";
+      if (valuationtype === "V2") {
+        evalKey = "reevaluator1";
+        evalRoleTitle = "Re-evaluator 1";
+        valLabel = "Re-evaluation 1 (V2)";
+      } else if (valuationtype === "V3") {
+        evalKey = "reevaluator2";
+        evalRoleTitle = "Re-evaluator 2";
+        valLabel = "Re-evaluation 2 (V3)";
+      } else if (valuationtype === "V4") {
+        evalKey = "reevaluator3";
+        evalRoleTitle = "Re-evaluator 3";
+        valLabel = "Re-evaluation 3 (V4)";
+      }
 
-      const rawEnroll = text(allot.regno || "");
-      const enrollmentPrefix = rawEnroll.length >= 2 ? rawEnroll.slice(0, 2) : rawEnroll;
-      const enrollmentNumber = rawEnroll.length >= 2 ? rawEnroll.slice(2) : "";
+      const evaluatedRevals = revals.filter((r) => {
+        const ev = r[evalKey];
+        return ev && (ev.status === "Evaluated" || (ev.marks !== null && ev.marks !== undefined));
+      });
 
-      const evaluatorid = text(
-        allot.evaluatorid ||
-        allot.acceptancedata?.examinercode ||
-        (allot.examineremail ? allot.examineremail.split("@")[0].toUpperCase() : "P1040")
-      );
-      const evaluatorname = text(
-        allot.examinername ||
-        allot.acceptancedata?.examinername ||
-        "DR SATYENDRA PRASAD MUKHIYA"
-      );
-      const evaluatorcontact = text(
-        allot.acceptancedata?.contact_no ||
-        allot.acceptancedata?.working_mobile ||
-        allot.acceptancedata?.working_phone ||
-        "9425093544"
-      );
+      if (!evaluatedRevals.length) {
+        return res.status(400).json({
+          success: false,
+          message: `${valLabel} marks have not been evaluated or submitted yet for this course.`
+        });
+      }
 
-      return {
-        sn: index + 1,
-        cn,
-        regno: allot.regno,
-        enrollmentPrefix,
-        enrollmentNumber,
-        student: allot.student,
-        inFigure: marksobtained,
-        inWords: numberToWords(marksobtained),
-        evaluatorid,
-        evaluatorname,
-        evaluatorcontact,
-        evaluatoremail: allot.examineremail || ""
-      };
-    });
+      sampleRecord = evaluatedRevals[0] || {};
+      if (Number(sampleRecord.maxmarks)) maxMarks = Number(sampleRecord.maxmarks);
+
+      students = evaluatedRevals.map((r, index) => {
+        const ev = r[evalKey] || {};
+        const book = bookMap.get(r.regno);
+        const roll = rollMap.get(r.regno);
+        const marksobtained = Number(ev.marks ?? 0);
+        const cn = text(r.cn || book?.cn || roll?.cn || (631580 + index + 1));
+        const rawEnroll = text(r.regno || "");
+        const enrollmentPrefix = rawEnroll.length >= 2 ? rawEnroll.slice(0, 2) : rawEnroll;
+        const enrollmentNumber = rawEnroll.length >= 2 ? rawEnroll.slice(2) : "";
+
+        const evaluatorid = text(
+          ev.evaluatorid ||
+          (ev.email ? ev.email.split("@")[0].toUpperCase() : `${valuationtype}-EVAL`)
+        );
+        const evaluatorname = text(ev.name || evalRoleTitle);
+        const evaluatorcontact = text(ev.contact || ev.mobile || "NA");
+        const evaluatoremail = text(ev.email || "");
+
+        return {
+          sn: index + 1,
+          cn,
+          regno: r.regno,
+          enrollmentPrefix,
+          enrollmentNumber,
+          student: r.student,
+          originalMarks: r.originalmarks,
+          inFigure: marksobtained,
+          inWords: numberToWords(marksobtained),
+          evaluatorid,
+          evaluatorname,
+          evaluatorcontact,
+          evaluatoremail
+        };
+      });
+    } else {
+      // V1: Initial Valuation
+      valLabel = "Initial Valuation (V1)";
+
+      let allotments = await ConductExamExaminerAllotment.find(filter).sort({ regno: 1, student: 1 }).lean();
+      if (!allotments.length) {
+        allotments = await ConductExamExaminerAllotment.find({ colid, coursecode }).sort({ regno: 1, student: 1 }).lean();
+      }
+
+      const assessmentMarks = await NepLmsAssessmentMarks.find({ colid, coursecode }).lean();
+      const assessMap = new Map();
+      assessmentMarks.forEach((m) => {
+        assessMap.set(m.regno, m);
+      });
+
+      const onScreenMarks = await ConductExamOnScreenMark.find({ colid, coursecode }).lean();
+      const markGroup = new Map();
+      onScreenMarks.forEach((m) => {
+        if (!markGroup.has(m.regno)) markGroup.set(m.regno, []);
+        markGroup.get(m.regno).push(m);
+      });
+
+      sampleRecord = allotments[0] || rolls[0] || {};
+
+      students = allotments.map((allot, index) => {
+        const book = bookMap.get(allot.regno);
+        const roll = rollMap.get(allot.regno);
+        const assess = assessMap.get(allot.regno);
+        const marksList = markGroup.get(allot.regno) || [];
+
+        let marksobtained = 0;
+        if (allot.totalmarksobtained !== null && allot.totalmarksobtained !== undefined) {
+          marksobtained = Number(allot.totalmarksobtained);
+        } else if (assess?.marksobtained !== undefined && assess?.marksobtained !== null) {
+          marksobtained = Number(assess.marksobtained);
+        } else if (marksList.length > 0) {
+          marksobtained = marksList.reduce((sum, item) => sum + (Number(item.marks) || 0), 0);
+        }
+
+        const cn = text(book?.cn || allot.cn || roll?.cn || (631580 + index + 1));
+        const rawEnroll = text(allot.regno || "");
+        const enrollmentPrefix = rawEnroll.length >= 2 ? rawEnroll.slice(0, 2) : rawEnroll;
+        const enrollmentNumber = rawEnroll.length >= 2 ? rawEnroll.slice(2) : "";
+
+        const evaluatorid = text(
+          allot.evaluatorid ||
+          allot.acceptancedata?.examinercode ||
+          (allot.examineremail ? allot.examineremail.split("@")[0].toUpperCase() : "P1040")
+        );
+        const evaluatorname = text(
+          allot.examinername ||
+          allot.acceptancedata?.examinername ||
+          "DR SATYENDRA PRASAD MUKHIYA"
+        );
+        const evaluatorcontact = text(
+          allot.acceptancedata?.contact_no ||
+          allot.acceptancedata?.working_mobile ||
+          allot.acceptancedata?.working_phone ||
+          "9425093544"
+        );
+
+        return {
+          sn: index + 1,
+          cn,
+          regno: allot.regno,
+          enrollmentPrefix,
+          enrollmentNumber,
+          student: allot.student,
+          inFigure: marksobtained,
+          inWords: numberToWords(marksobtained),
+          evaluatorid,
+          evaluatorname,
+          evaluatorcontact,
+          evaluatoremail: allot.examineremail || ""
+        };
+      });
+    }
 
     let highestMark = 0;
     let lowestMark = 0;
@@ -236,8 +332,8 @@ exports.getAwardList = async (req, res) => {
     });
 
     let examSession = "";
-    if (sampleAllot.exam) {
-      const match = sampleAllot.exam.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-_ ]?(\d{4})/i);
+    if (sampleRecord.exam) {
+      const match = sampleRecord.exam.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-_ ]?(\d{4})/i);
       if (match) {
         examSession = match[1].toUpperCase() + match[2];
       }
@@ -256,16 +352,18 @@ exports.getAwardList = async (req, res) => {
       email: examConfig?.email || "",
       website: examConfig?.website || "",
       logo: examConfig?.logo || "",
-      reportTitle: "Award List - Theory Exam, " + examSession,
+      reportTitle: `Award List - ${valLabel} - Theory Exam, ${examSession}`,
+      valuationType: valuationtype,
+      valuationLabel: valLabel,
       date: dateFormatted,
-      academicyear: sampleAllot.academicyear || "2026-27",
-      yearText: sampleAllot.exam || (sampleAllot.program || "Course") + " (" + (sampleAllot.academicyear || "") + ")",
-      program: sampleAllot.program || "PhD",
-      programcode: sampleAllot.programcode || "PHD-002",
-      paperName: sampleAllot.course || "Research Methodology",
-      paperCode: sampleAllot.coursecode || "PHD-01",
-      exam: sampleAllot.exam || "Ph.D Course Work_MAIN-JUNE-2026",
-      examcode: sampleAllot.examcode || "ES-025",
+      academicyear: sampleRecord.academicyear || "2026-27",
+      yearText: sampleRecord.exam || (sampleRecord.program || "Course") + " (" + (sampleRecord.academicyear || "") + ")",
+      program: sampleRecord.program || "PhD",
+      programcode: sampleRecord.programcode || "PHD-002",
+      paperName: sampleRecord.course || "Research Methodology",
+      paperCode: sampleRecord.coursecode || "PHD-01",
+      exam: sampleRecord.exam || "Ph.D Course Work_MAIN-JUNE-2026",
+      examcode: sampleRecord.examcode || "ES-025",
       maxMarks
     };
 
