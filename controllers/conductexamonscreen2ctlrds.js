@@ -366,6 +366,148 @@ exports.assignedCourses = async (req, res) => {
   }
 };
 
+exports.reevaluationAssignedCourses = async (req, res) => {
+  try {
+    const colid = colNumber(req.query.colid);
+    const examineremail = text(req.query.examineremail || req.query.user);
+    if (colid === undefined) return res.status(400).json({ success: false, message: "colid is required" });
+    if (!examineremail) return res.status(400).json({ success: false, message: "examineremail is required" });
+
+    const regexEmail = new RegExp(`^${escapeRegex(examineremail)}$`, "i");
+    const isAdmin = /admin|evaluation/i.test(examineremail);
+
+    let filter = { colid };
+    if (!isAdmin) {
+      filter.$or = [
+        { "reevaluator1.email": regexEmail },
+        { "reevaluator2.email": regexEmail },
+        { "reevaluator3.email": regexEmail }
+      ];
+    } else {
+      filter.status = { $in: ["UnderReval_1_2", "ReferredTo_3", "UnderReval_3", "Completed", "Applied"] };
+    }
+
+    const revals = await ConductExamReevaluation.find(filter)
+      .sort({ academicyear: -1, exam: 1, course: 1, updatedAt: -1 })
+      .lean();
+
+    const courseMap = new Map();
+
+    revals.forEach((row) => {
+      const roles = [];
+      const e1Match = row.reevaluator1?.email && (isAdmin || regexEmail.test(row.reevaluator1.email));
+      const e2Match = row.reevaluator2?.email && (isAdmin || regexEmail.test(row.reevaluator2.email));
+      const e3Match = row.reevaluator3?.email && (isAdmin || regexEmail.test(row.reevaluator3.email));
+
+      if (e1Match) {
+        roles.push({
+          valuationtype: "V2",
+          roleLabel: "Re-evaluator 1 (V2)",
+          evalObj: row.reevaluator1
+        });
+      }
+      if (e2Match) {
+        roles.push({
+          valuationtype: "V3",
+          roleLabel: "Re-evaluator 2 (V3)",
+          evalObj: row.reevaluator2
+        });
+      }
+      if (e3Match) {
+        roles.push({
+          valuationtype: "V4",
+          roleLabel: "Re-evaluator 3 (V4)",
+          evalObj: row.reevaluator3
+        });
+      }
+
+      if (roles.length === 0 && isAdmin) {
+        roles.push({
+          valuationtype: "V2",
+          roleLabel: "Re-evaluator 1 (V2 - Unassigned)",
+          evalObj: row.reevaluator1
+        });
+      }
+
+      roles.forEach((roleInfo) => {
+        const key = `${row.academicyear}__${row.examcode}__${row.coursecode}__${roleInfo.valuationtype}`;
+        if (!courseMap.has(key)) {
+          courseMap.set(key, {
+            key,
+            academicyear: row.academicyear,
+            exam: row.exam,
+            examcode: row.examcode,
+            regulation: row.regulation,
+            program: row.program,
+            programcode: row.programcode,
+            subject: row.subject,
+            course: row.course,
+            coursecode: row.coursecode,
+            valuationtype: roleInfo.valuationtype,
+            roleLabel: roleInfo.roleLabel,
+            totalScripts: 0,
+            evaluatedScripts: 0,
+            pendingScripts: 0,
+            students: []
+          });
+        }
+        const item = courseMap.get(key);
+        item.totalScripts += 1;
+        const isEval = String(roleInfo.evalObj?.status || "").toLowerCase() === "evaluated";
+        if (isEval) {
+          item.evaluatedScripts += 1;
+        } else {
+          item.pendingScripts += 1;
+        }
+        item.students.push({
+          _id: row._id,
+          regno: row.regno,
+          student: row.student,
+          cn: row.cn || "",
+          marks: roleInfo.evalObj?.marks,
+          status: roleInfo.evalObj?.status || "Pending"
+        });
+      });
+    });
+
+    const coursesList = Array.from(courseMap.values());
+
+    const enriched = await Promise.all(
+      coursesList.map(async (item) => {
+        let qp = await ConductExamQuestionPaper.findOne({
+          colid,
+          coursecode: item.coursecode,
+          status: { $nin: [/^Draft$/i, /^Rejected$/i] }
+        }).lean();
+
+        if (!qp) {
+          const ConductExamQuestionPaperV1 = require("../Models/conductexamquestionpaperds");
+          qp = await ConductExamQuestionPaperV1.findOne({
+            colid,
+            coursecode: item.coursecode,
+            status: { $nin: [/^Draft$/i, /^Rejected$/i] }
+          }).lean();
+        }
+
+        const balance = Math.max(0, item.totalScripts - item.evaluatedScripts);
+
+        return {
+          ...item,
+          paperid: qp?._id || item.coursecode,
+          hasDigitalQP: Boolean(qp),
+          sectionsCount: qp?.sections?.length || 1,
+          balance,
+          isReevaluation: true
+        };
+      })
+    );
+
+    res.json({ success: true, data: enriched });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.markingOptions = async (req, res) => {
   try {
     const colid = colNumber(req.query.colid);

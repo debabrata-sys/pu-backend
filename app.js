@@ -6175,6 +6175,7 @@ app.get("/api/v2/conductexam2/score-rules", conductexamonscreen2ctlrds.getRules)
 app.post("/api/v2/conductexam2/score-rules", conductexamonscreen2ctlrds.saveRule);
 app.post("/api/v2/conductexam2/score-rules-delete", conductexamonscreen2ctlrds.deleteRule);
 app.get("/api/v2/conductexam2/onscreen-assigned-courses", conductexamonscreen2ctlrds.assignedCourses);
+app.get("/api/v2/conductexam2/reevaluation-assigned-courses", conductexamonscreen2ctlrds.reevaluationAssignedCourses);
 app.get("/api/v2/conductexam2/onscreen-options", conductexamonscreen2ctlrds.markingOptions);
 app.get("/api/v2/conductexam2/onscreen-students", conductexamonscreen2ctlrds.loadStudents);
 app.get("/api/v2/conductexam2/onscreen-student-marks", conductexamonscreen2ctlrds.loadStudentMarks);
