@@ -373,31 +373,52 @@ exports.reevaluationAssignedCourses = async (req, res) => {
     if (colid === undefined) return res.status(400).json({ success: false, message: "colid is required" });
     if (!examineremail) return res.status(400).json({ success: false, message: "examineremail is required" });
 
-    const regexEmail = new RegExp(`^${escapeRegex(examineremail)}$`, "i");
-    const isAdmin = /admin|evaluation/i.test(examineremail);
+    const userTarget = examineremail.toLowerCase().trim();
+    const userPrefix = userTarget.includes("@") ? userTarget.split("@")[0] : userTarget;
 
-    let filter = { colid };
-    if (!isAdmin) {
-      filter.$or = [
-        { "reevaluator1.email": regexEmail },
-        { "reevaluator2.email": regexEmail },
-        { "reevaluator3.email": regexEmail }
-      ];
-    } else {
-      filter.status = { $in: ["UnderReval_1_2", "ReferredTo_3", "UnderReval_3", "Completed", "Applied"] };
-    }
+    const regexEmail = new RegExp(`^${escapeRegex(userTarget)}$`, "i");
+    const regexUser = new RegExp(`^${escapeRegex(userPrefix)}(@.*)?$`, "i");
+
+    // Filter strictly by the logged-in evaluator's email or evaluator ID
+    const filter = {
+      colid,
+      $or: [
+        { "reevaluator1.email": { $in: [regexEmail, regexUser] } },
+        { "reevaluator1.evaluatorid": { $in: [regexEmail, regexUser] } },
+        { "reevaluator2.email": { $in: [regexEmail, regexUser] } },
+        { "reevaluator2.evaluatorid": { $in: [regexEmail, regexUser] } },
+        { "reevaluator3.email": { $in: [regexEmail, regexUser] } },
+        { "reevaluator3.evaluatorid": { $in: [regexEmail, regexUser] } }
+      ]
+    };
 
     const revals = await ConductExamReevaluation.find(filter)
       .sort({ academicyear: -1, exam: 1, course: 1, updatedAt: -1 })
       .lean();
 
+    const checkEvaluatorMatch = (evalObj) => {
+      if (!evalObj) return false;
+      const evalEmail = String(evalObj.email || "").trim().toLowerCase();
+      const evalId = String(evalObj.evaluatorid || "").trim().toLowerCase();
+      if (!evalEmail && !evalId) return false;
+
+      const evalUserPart = evalEmail.includes("@") ? evalEmail.split("@")[0] : evalEmail;
+
+      if (evalEmail && evalEmail === userTarget) return true;
+      if (evalId && evalId === userTarget) return true;
+      if (evalUserPart && evalUserPart === userPrefix) return true;
+      if (evalId && evalId === userPrefix) return true;
+
+      return false;
+    };
+
     const courseMap = new Map();
 
     revals.forEach((row) => {
       const roles = [];
-      const e1Match = row.reevaluator1?.email && (isAdmin || regexEmail.test(row.reevaluator1.email));
-      const e2Match = row.reevaluator2?.email && (isAdmin || regexEmail.test(row.reevaluator2.email));
-      const e3Match = row.reevaluator3?.email && (isAdmin || regexEmail.test(row.reevaluator3.email));
+      const e1Match = checkEvaluatorMatch(row.reevaluator1);
+      const e2Match = checkEvaluatorMatch(row.reevaluator2);
+      const e3Match = checkEvaluatorMatch(row.reevaluator3);
 
       if (e1Match) {
         roles.push({
@@ -418,14 +439,6 @@ exports.reevaluationAssignedCourses = async (req, res) => {
           valuationtype: "V4",
           roleLabel: "Re-evaluator 3 (V4)",
           evalObj: row.reevaluator3
-        });
-      }
-
-      if (roles.length === 0 && isAdmin) {
-        roles.push({
-          valuationtype: "V2",
-          roleLabel: "Re-evaluator 1 (V2 - Unassigned)",
-          evalObj: row.reevaluator1
         });
       }
 
@@ -497,7 +510,10 @@ exports.reevaluationAssignedCourses = async (req, res) => {
           hasDigitalQP: Boolean(qp),
           sectionsCount: qp?.sections?.length || 1,
           balance,
-          isReevaluation: true
+          isReevaluation: true,
+          daysRemainingText: "Open",
+          daysRemaining: null,
+          isOverdue: false
         };
       })
     );
