@@ -4,6 +4,8 @@ const ConductExamExaminer = require("../Models/conductexamexaminer2ds");
 const ConductExamQuestionPaper = require("../Models/conductexamquestionpaper2ds");
 const ConductExamAnswerBook = require("../Models/conductexamanswerbook2ds");
 const NepLmsAssessmentMarks = require("../Models/neplmsassessmentmarksds");
+const ConductExamOnScreenMark = require("../Models/conductexamonscreenmark2ds");
+const reevaluationds1 = require("../Models/reevaluationds1");
 
 const text = (v) => String(v || "").trim();
 const colNumber = (v) => {
@@ -154,22 +156,73 @@ exports.getEligibleStudents = async (req, res) => {
       return res.status(400).json({ success: false, message: "colid, examcode, and coursecode are required" });
     }
 
-    const [allotments, existingRevals, qp] = await Promise.all([
+    const [allotments, existingRevals, qp, onscreenMarks, studentApps] = await Promise.all([
       ConductExamExaminerAllotment.find({ colid, examcode, coursecode, evaluationstatus: /^Evaluated$/i }).sort({ regno: 1 }).lean(),
       ConductExamReevaluation.find({ colid, examcode, coursecode }).lean(),
-      ConductExamQuestionPaper.findOne({ colid, coursecode }).sort({ updatedAt: -1 }).lean()
+      ConductExamQuestionPaper.findOne({ colid, coursecode }).sort({ updatedAt: -1 }).lean(),
+      ConductExamOnScreenMark.find({ colid, coursecode }).lean(),
+      reevaluationds1.find({ colid, examcode, papercode: coursecode }).lean()
     ]);
 
-    const maxMarks = Number(qp?.totalmarks) || 75;
+    const maxMarks = Number(qp?.totalmarks) || 100;
+    const markGroup = new Map();
+    onscreenMarks.forEach((m) => {
+      if (!markGroup.has(m.regno)) markGroup.set(m.regno, 0);
+      markGroup.set(m.regno, markGroup.get(m.regno) + (Number(m.marks) || 0));
+    });
+
+    const getMarks = (a) => {
+      if (a.totalmarksobtained != null && !isNaN(Number(a.totalmarksobtained))) {
+        return Number(a.totalmarksobtained);
+      }
+      return markGroup.get(a.regno) || 0;
+    };
+
     const revalMap = new Map(existingRevals.map((r) => [r.regno, r]));
+
+    // Auto-sync any applications submitted from student portal (reevaluationds1)
+    for (const app of studentApps) {
+      if (!revalMap.has(app.regno)) {
+        const allot = allotments.find((a) => a.regno === app.regno) || {};
+        const origMarks = Number(app.originalmarks) || getMarks(allot);
+        try {
+          const newReval = await ConductExamReevaluation.create({
+            colid,
+            academicyear: allot.academicyear || "2026-27",
+            exam: allot.exam || app.examcode || "Ph.D Course Work_MAIN-JUNE-2026",
+            examcode,
+            regulation: allot.regulation || app.regulation || "R2020",
+            program: allot.program || app.program || "PhD",
+            programcode: allot.programcode || app.program || "PHD-002",
+            subject: allot.subject || app.branch || "",
+            course: allot.course || app.papername || "Research Methodology",
+            coursecode,
+            paperid: qp?._id || null,
+            student: app.student || allot.student || app.name,
+            regno: app.regno,
+            cn: allot.cn || "",
+            maxmarks: app.maxmarks || maxMarks,
+            originalmarks: origMarks,
+            originalevaluatorid: allot.evaluatorid || "",
+            originalevaluatorname: allot.examinername || "",
+            status: "Applied",
+            user: app.user || "student"
+          });
+          revalMap.set(app.regno, newReval.toObject());
+        } catch (syncErr) {
+          console.error("Error syncing student app into ConductExamReevaluation:", syncErr);
+        }
+      }
+    }
 
     const students = allotments.map((a) => {
       const reval = revalMap.get(a.regno);
+      const marks = getMarks(a);
       return {
         regno: a.regno,
         student: a.student,
         cn: a.cn || "",
-        originalmarks: a.totalmarksobtained !== null ? Number(a.totalmarksobtained) : 0,
+        originalmarks: marks,
         evaluatorid: a.evaluatorid || "",
         evaluatorname: a.examinername || "",
         maxmarks: maxMarks,
@@ -196,28 +249,38 @@ exports.applyReevaluation = async (req, res) => {
       return res.status(400).json({ success: false, message: "colid, examcode, coursecode and students are required" });
     }
 
-    const [allotments, qp] = await Promise.all([
+    const [allotments, qp, onscreenMarks] = await Promise.all([
       ConductExamExaminerAllotment.find({ colid, examcode, coursecode, regno: { $in: studentList } }).lean(),
-      ConductExamQuestionPaper.findOne({ colid, coursecode }).sort({ updatedAt: -1 }).lean()
+      ConductExamQuestionPaper.findOne({ colid, coursecode }).sort({ updatedAt: -1 }).lean(),
+      ConductExamOnScreenMark.find({ colid, coursecode, regno: { $in: studentList } }).lean()
     ]);
 
-    const maxMarks = Number(qp?.totalmarks) || 75;
+    const markGroup = new Map();
+    onscreenMarks.forEach((m) => {
+      if (!markGroup.has(m.regno)) markGroup.set(m.regno, 0);
+      markGroup.set(m.regno, markGroup.get(m.regno) + (Number(m.marks) || 0));
+    });
+
+    const maxMarks = Number(qp?.totalmarks) || 100;
     const ops = [];
 
     allotments.forEach((allot) => {
-      const origMarks = allot.totalmarksobtained !== null ? Number(allot.totalmarksobtained) : 0;
+      const origMarks = (allot.totalmarksobtained != null && !isNaN(Number(allot.totalmarksobtained)))
+        ? Number(allot.totalmarksobtained)
+        : (markGroup.get(allot.regno) || 0);
+
       ops.push({
         updateOne: {
           filter: { colid, examcode, coursecode, regno: allot.regno },
           update: {
-            $setOnInsert: {
+            $set: {
               colid,
               academicyear: allot.academicyear,
               exam: allot.exam,
               examcode: allot.examcode,
-              regulation: allot.regulation || "",
-              program: allot.program,
-              programcode: allot.programcode,
+              regulation: allot.regulation || "R2020",
+              program: allot.program || "PhD",
+              programcode: allot.programcode || "PHD-002",
               subject: allot.subject || "",
               course: allot.course,
               coursecode: allot.coursecode,
@@ -242,8 +305,43 @@ exports.applyReevaluation = async (req, res) => {
       await ConductExamReevaluation.bulkWrite(ops, { ordered: false });
     }
 
+    // Also sync to reevaluationds1 so student can track their status in Student Portal
+    for (const allot of allotments) {
+      const origMarks = (allot.totalmarksobtained != null && !isNaN(Number(allot.totalmarksobtained)))
+        ? Number(allot.totalmarksobtained)
+        : (markGroup.get(allot.regno) || 0);
+
+      const existsInStud = await reevaluationds1.findOne({ colid, examcode, papercode: coursecode, regno: allot.regno });
+      if (!existsInStud) {
+        await reevaluationds1.create({
+          student: allot.student,
+          regno: allot.regno,
+          name: allot.student,
+          user: text(req.body.user),
+          colid,
+          program: allot.program || allot.programcode,
+          examcode,
+          month: "June",
+          year: allot.academicyear ? allot.academicyear.split("-")[0] : "2026",
+          regulation: allot.regulation || "R2020",
+          semester: allot.semester || "1",
+          branch: allot.subject || "PhD",
+          papercode: coursecode,
+          papername: allot.course,
+          originalmarks: origMarks,
+          maxmarks: maxMarks,
+          examiner1status: "pending",
+          examiner2status: "pending",
+          examiner3status: "pending",
+          status: "pending",
+          applieddate: new Date()
+        });
+      }
+    }
+
     res.json({ success: true, count: ops.length, message: "Successfully applied students for re-evaluation" });
   } catch (err) {
+    console.error("applyReevaluation error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -285,6 +383,20 @@ exports.allotReevaluators = async (req, res) => {
     const result = await ConductExamReevaluation.updateMany(
       { colid, regno: { $in: regnos } },
       { $set: updatePayload }
+    );
+
+    // Sync status to student portal collection reevaluationds1
+    await reevaluationds1.updateMany(
+      { colid, regno: { $in: regnos } },
+      {
+        $set: {
+          examiner1id: reevaluator1.email,
+          examiner2id: reevaluator2.email,
+          examiner1status: "allocated",
+          examiner2status: "allocated",
+          status: "stage1"
+        }
+      }
     );
 
     res.json({
@@ -345,6 +457,58 @@ exports.listReevaluations = async (req, res) => {
     if (text(req.query.examcode)) filter.examcode = text(req.query.examcode);
     if (text(req.query.coursecode)) filter.coursecode = text(req.query.coursecode);
     if (text(req.query.status)) filter.status = text(req.query.status);
+
+    // Auto-sync any pending applications from reevaluationds1 for this course
+    if (filter.examcode && filter.coursecode) {
+      const studentApps = await reevaluationds1.find({
+        colid,
+        examcode: filter.examcode,
+        papercode: filter.coursecode
+      }).lean();
+
+      for (const app of studentApps) {
+        const exists = await ConductExamReevaluation.findOne({
+          colid,
+          examcode: filter.examcode,
+          coursecode: filter.coursecode,
+          regno: app.regno
+        });
+        if (!exists) {
+          const allot = await ConductExamExaminerAllotment.findOne({
+            colid,
+            examcode: filter.examcode,
+            coursecode: filter.coursecode,
+            regno: app.regno
+          }).lean();
+
+          try {
+            await ConductExamReevaluation.create({
+              colid,
+              academicyear: allot?.academicyear || "2026-27",
+              exam: allot?.exam || app.examcode || "Ph.D Course Work_MAIN-JUNE-2026",
+              examcode: filter.examcode,
+              regulation: allot?.regulation || app.regulation || "R2020",
+              program: allot?.program || app.program || "PhD",
+              programcode: allot?.programcode || app.program || "PHD-002",
+              subject: allot?.subject || app.branch || "",
+              course: allot?.course || app.papername || "Research Methodology",
+              coursecode: filter.coursecode,
+              student: app.student || allot?.student || app.name,
+              regno: app.regno,
+              cn: allot?.cn || "",
+              maxmarks: app.maxmarks || 100,
+              originalmarks: Number(app.originalmarks) || 52,
+              originalevaluatorid: allot?.evaluatorid || "",
+              originalevaluatorname: allot?.examinername || "",
+              status: "Applied",
+              user: app.user || "student"
+            });
+          } catch (createErr) {
+            console.error("Error creating synced ConductExamReevaluation:", createErr);
+          }
+        }
+      }
+    }
 
     const revals = await ConductExamReevaluation.find(filter).sort({ updatedAt: -1, regno: 1 }).lean();
 
