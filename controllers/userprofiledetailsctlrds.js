@@ -61,7 +61,12 @@ exports.searchUsers = async (req, res) => {
 exports.getRequirements = async (req, res) => {
   try {
     const filter = { colid: number(req.query.colid) };
-    if (clean(req.query.role)) filter.role = clean(req.query.role);
+    const roleParam = clean(req.query.role);
+    if (roleParam && !/^All$/i.test(roleParam) && clean(req.query.exactrole) !== "yes") {
+      filter.$or = [{ role: roleParam }, { role: /^All$/i }];
+    } else if (roleParam && clean(req.query.exactrole) === "yes") {
+      filter.role = roleParam;
+    }
     if (clean(req.query.type)) filter.type = clean(req.query.type);
     if (clean(req.query.status)) filter.status = clean(req.query.status);
     const data = await UserProfileDocumentRequirement.find(filter).sort({ role: 1, type: 1, order: 1, documentname: 1 }).lean();

@@ -15,6 +15,7 @@ const conductExamAnswerBook2Schema = new mongoose.Schema({
   coursecode: { type: String, required: true, trim: true },
   student: { type: String, required: true, trim: true },
   regno: { type: String, required: true, trim: true, index: true },
+  cn: { type: String, trim: true, default: "" },
   seatno: { type: String, trim: true },
   examdate: { type: String, trim: true },
   examslot: { type: String, trim: true },

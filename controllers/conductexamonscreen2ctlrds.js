@@ -6,6 +6,7 @@ const ConductExamExaminerAllotment = require("../Models/conductexamexaminerallot
 const ConductExamAnswerBook = require("../Models/conductexamanswerbook2ds");
 const CourseAssessment = require("../Models/courseassessmentds");
 const NepLmsAssessmentMarks = require("../Models/neplmsassessmentmarksds");
+const ConductExamReevaluation = require("../Models/conductexamreevaluation2ds");
 
 const text = (value) => String(value || "").trim();
 const number = (value) => {
@@ -63,6 +64,9 @@ const resolvePaper = async (paperid, colid) => {
   if (!paper) {
     const ConductExamQuestionPaperV1 = require("../Models/conductexamquestionpaperds");
     paper = await ConductExamQuestionPaperV1.findOne({ _id: paperid, colid }).lean();
+  }
+  if (!paper && paperid) {
+    paper = await ConductExamQuestionPaper.findOne({ coursecode: paperid, colid }).lean();
   }
   if (!paper) {
     const allot = await ConductExamExaminerAllotment.findOne({ _id: paperid, colid }).lean();
@@ -456,27 +460,62 @@ exports.loadStudents = async (req, res) => {
     const paper = await resolvePaper(paperid, colid);
     if (!paper) return res.status(404).json({ success: false, message: "Paper not found" });
 
-    let studentFilter = {
-      colid,
-      academicyear: paper.academicyear,
-      examcode: paper.examcode,
-      coursecode: paper.coursecode
-    };
+    const valuationtype = text(req.query.valuationtype) || "V1";
+    let students = [];
 
-    let students = await ConductExamExaminerAllotment.find({
-      ...studentFilter,
-      examineremail: new RegExp(`^${escapeRegex(examineremail)}$`, "i")
-    }).sort({ regno: 1, student: 1 }).lean();
+    if (valuationtype !== "V1") {
+      let revalFilter = {
+        colid,
+        coursecode: paper.coursecode
+      };
+      if (paper.examcode) revalFilter.examcode = paper.examcode;
+      if (req.query.regno) revalFilter.regno = text(req.query.regno);
 
-    // Fallback if no students for this specific examiner: check all allotments for this paper
-    if (!students.length) {
-      students = await ConductExamExaminerAllotment.find(studentFilter).sort({ regno: 1, student: 1 }).lean();
-    }
+      const revals = await ConductExamReevaluation.find(revalFilter).sort({ regno: 1 }).lean();
+      students = revals.map((r) => {
+        let evalObj = valuationtype === "V2" ? r.reevaluator1 : (valuationtype === "V3" ? r.reevaluator2 : r.reevaluator3);
+        return {
+          _id: r._id,
+          regno: r.regno,
+          student: r.student,
+          cn: r.cn || "",
+          academicyear: r.academicyear,
+          exam: r.exam,
+          examcode: r.examcode,
+          course: r.course,
+          coursecode: r.coursecode,
+          evaluationstatus: evalObj?.status || "Pending",
+          totalmarksobtained: evalObj?.marks !== null && evalObj?.marks !== undefined ? evalObj.marks : null,
+          valuationtype,
+          examineremail: evalObj?.email || examineremail,
+          examinername: evalObj?.name || "",
+          verifiedpages: [],
+          pagestamps: []
+        };
+      });
+    } else {
+      let studentFilter = {
+        colid,
+        academicyear: paper.academicyear,
+        examcode: paper.examcode,
+        coursecode: paper.coursecode
+      };
 
-    // Fallback: check V1 allotments if still empty
-    if (!students.length) {
-      const ConductExamExaminerAllotmentV1 = require("../Models/conductexamexaminerallotmentds");
-      students = await ConductExamExaminerAllotmentV1.find(studentFilter).sort({ regno: 1, student: 1 }).lean();
+      students = await ConductExamExaminerAllotment.find({
+        ...studentFilter,
+        examineremail: new RegExp(`^${escapeRegex(examineremail)}$`, "i")
+      }).sort({ regno: 1, student: 1 }).lean();
+
+      // Fallback if no students for this specific examiner: check all allotments for this paper
+      if (!students.length) {
+        students = await ConductExamExaminerAllotment.find(studentFilter).sort({ regno: 1, student: 1 }).lean();
+      }
+
+      // Fallback: check V1 allotments if still empty
+      if (!students.length) {
+        const ConductExamExaminerAllotmentV1 = require("../Models/conductexamexaminerallotmentds");
+        students = await ConductExamExaminerAllotmentV1.find(studentFilter).sort({ regno: 1, student: 1 }).lean();
+      }
     }
 
     const regnos = students.map((s) => s.regno);
@@ -494,7 +533,9 @@ exports.loadStudents = async (req, res) => {
         ...st,
         answerbookurl: book?.answerbookurl || st.answerbookurl || "",
         answerbookfilename: book?.answerbookfilename || st.answerbookfilename || "",
-        pagescount: pCount > 0 ? pCount : 2
+        pagescount: pCount > 0 ? pCount : 2,
+        verifiedpages: Array.isArray(st.verifiedpages) ? st.verifiedpages : [],
+        pagestamps: Array.isArray(st.pagestamps) ? st.pagestamps : []
       };
     });
 
@@ -587,11 +628,15 @@ exports.loadStudentMarks = async (req, res) => {
     const paper = await resolvePaper(paperid, colid);
     if (!paper) return res.status(404).json({ success: false, message: "Paper not found" });
 
-    let [rules, marks, answerBook] = await Promise.all([
+    const valuationtype = text(req.query.valuationtype) || "V1";
+    const isReval = valuationtype !== "V1";
+
+    let [rules, marks, answerBook, allot] = await Promise.all([
       ConductExamScoreRule.find({ colid, paperid, status: /^Active$/i }).lean(),
-      ConductExamOnScreenMark.find({ colid, paperid, regno }).lean(),
+      ConductExamOnScreenMark.find({ colid, paperid, regno, valuationtype }).lean(),
       ConductExamAnswerBook.findOne({ colid, coursecode: paper.coursecode, regno }).sort({ updatedAt: -1 }).lean()
-        || ConductExamAnswerBook.findOne({ colid, regno }).sort({ updatedAt: -1 }).lean()
+        || ConductExamAnswerBook.findOne({ colid, regno }).sort({ updatedAt: -1 }).lean(),
+      ConductExamExaminerAllotment.findOne({ colid, coursecode: paper.coursecode, regno }).lean()
     ]);
 
     // If no score rules configured yet, provide automatic default rules matching the paper sections
@@ -609,8 +654,12 @@ exports.loadStudentMarks = async (req, res) => {
       success: true,
       paper,
       rules,
+      valuationtype,
+      isBlindMarking: isReval,
       marks: markMap.size ? Object.fromEntries(markMap.entries()) : {},
-      answerbook: answerBook || null
+      answerbook: answerBook || null,
+      verifiedpages: isReval ? [] : (allot?.verifiedpages || []),
+      pagestamps: isReval ? [] : (allot?.pagestamps || [])
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -662,11 +711,12 @@ exports.saveQuestionMarks = async (req, res) => {
         seatno: text(student.seatno),
         examinername: text(student.examinername),
         examineremail: text(student.examineremail),
+        valuationtype: text(req.body.valuationtype || student.valuationtype || "V1"),
         user: text(req.body.user)
       };
       ops.push({
         updateOne: {
-          filter: { colid, paperid, questionid: payload.questionid, regno: payload.regno },
+          filter: { colid, paperid, questionid: payload.questionid, regno: payload.regno, valuationtype: payload.valuationtype || "V1" },
           update: { $set: payload },
           upsert: true
         }
@@ -678,6 +728,20 @@ exports.saveQuestionMarks = async (req, res) => {
       const result = await ConductExamOnScreenMark.bulkWrite(ops, { ordered: false });
       saved = (result.upsertedCount || 0) + (result.modifiedCount || 0) + (result.matchedCount || 0);
     }
+
+    const valType = text(req.body.valuationtype || student.valuationtype || "V1");
+    if (valType === "V1" && (req.body.verifiedpages || req.body.pagestamps)) {
+      await ConductExamExaminerAllotment.updateOne(
+        { colid, coursecode: paper.coursecode, regno: text(student.regno) },
+        {
+          $set: {
+            verifiedpages: Array.isArray(req.body.verifiedpages) ? req.body.verifiedpages : [],
+            pagestamps: Array.isArray(req.body.pagestamps) ? req.body.pagestamps : []
+          }
+        }
+      );
+    }
+
     res.json({ success: true, saved });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -764,17 +828,54 @@ exports.finalizeStudent = async (req, res) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     await ConductExamOnScreenMark.updateMany({ colid, paperid, regno: payload.regno }, { $set: { finalized: "Yes" } });
-    await ConductExamExaminerAllotment.updateOne(
-      { colid, coursecode: payload.coursecode, regno: payload.regno },
-      {
-        $set: {
-          evaluationstatus: "Evaluated",
-          evaluationdate: new Date().toISOString(),
-          evaluationTimeSeconds: number(req.body.evaluationTimeSeconds) || 0,
-          verifiedPages: Array.isArray(req.body.verifiedPages) ? req.body.verifiedPages : []
+    const valuationtype = text(req.body.valuationtype || student.valuationtype || "V1");
+
+    if (valuationtype !== "V1") {
+      const reval = await ConductExamReevaluation.findOne({
+        colid,
+        examcode: paper.examcode,
+        coursecode: paper.coursecode,
+        regno: payload.regno
+      });
+
+      if (reval) {
+        const timeSec = number(req.body.evaluationTimeSeconds) || 0;
+        if (valuationtype === "V2") {
+          reval.reevaluator1.marks = total;
+          reval.reevaluator1.status = "Evaluated";
+          reval.reevaluator1.evaluatedAt = new Date();
+          reval.reevaluator1.evaluationTimeSeconds = timeSec;
+        } else if (valuationtype === "V3") {
+          reval.reevaluator2.marks = total;
+          reval.reevaluator2.status = "Evaluated";
+          reval.reevaluator2.evaluatedAt = new Date();
+          reval.reevaluator2.evaluationTimeSeconds = timeSec;
+        } else if (valuationtype === "V4") {
+          reval.reevaluator3.marks = total;
+          reval.reevaluator3.status = "Evaluated";
+          reval.reevaluator3.evaluatedAt = new Date();
+          reval.reevaluator3.evaluationTimeSeconds = timeSec;
         }
+
+        const { evaluateDecision } = require("./conductexamreevaluation2ctlrds");
+        await evaluateDecision(reval);
       }
-    );
+    } else {
+      await ConductExamExaminerAllotment.updateOne(
+        { colid, coursecode: payload.coursecode, regno: payload.regno },
+        {
+          $set: {
+            totalmarksobtained: total,
+            evaluationstatus: "Evaluated",
+            evaluationdate: new Date().toISOString(),
+            evaluationTimeSeconds: number(req.body.evaluationTimeSeconds) || 0,
+            verifiedPages: Array.isArray(req.body.verifiedPages || req.body.verifiedpages) ? (req.body.verifiedPages || req.body.verifiedpages) : [],
+            verifiedpages: Array.isArray(req.body.verifiedpages || req.body.verifiedPages) ? (req.body.verifiedpages || req.body.verifiedPages) : [],
+            pagestamps: Array.isArray(req.body.pagestamps) ? req.body.pagestamps : []
+          }
+        }
+      );
+    }
 
     // Find next pending student
     const nextStudent = await ConductExamExaminerAllotment.findOne({

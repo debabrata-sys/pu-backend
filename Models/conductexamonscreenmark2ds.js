@@ -27,12 +27,13 @@ const conductExamOnScreenMarkSchema = new mongoose.Schema(
     phone: { type: String, trim: true },
     examinername: { type: String, trim: true },
     examineremail: { type: String, trim: true },
+    valuationtype: { type: String, default: "V1", trim: true }, // V1, V2, V3, V4
     finalized: { type: String, trim: true, default: "No" },
     user: { type: String, trim: true }
   },
   { timestamps: true }
 );
 
-conductExamOnScreenMarkSchema.index({ colid: 1, paperid: 1, regno: 1, questionid: 1 }, { unique: true });
+conductExamOnScreenMarkSchema.index({ colid: 1, paperid: 1, regno: 1, questionid: 1, valuationtype: 1 }, { unique: true });
 
 module.exports = mongoose.model("conductexamonscreenmark2ds", conductExamOnScreenMarkSchema);

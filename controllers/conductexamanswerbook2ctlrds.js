@@ -5,6 +5,7 @@ const AWS = require("aws-sdk");
 const Awsconfig = require("../Models/awsconfig");
 const ConductExamRoll = require("../Models/conductexamrollds");
 const ConductExamAnswerBook = require("../Models/conductexamanswerbook2ds");
+const ConductExamExaminerAllotment = require("../Models/conductexamexaminerallotment2ds");
 
 // Multer in-memory storage for handling file streams
 const upload = multer({
@@ -208,6 +209,7 @@ exports.getAttendedStudents = async (req, res) => {
         campus: roll.campus,
         building: roll.building,
         attended: roll.attended || "Yes",
+        cn: book?.cn || roll.cn || "",
         answerbookurl,
         answerbookfilename,
         filesize: book?.filesize || 0,
@@ -291,6 +293,7 @@ exports.uploadAnswerBook = async (req, res) => {
       coursecode,
       student: text(req.body.student),
       regno,
+      cn: text(req.body.cn),
       seatno: text(req.body.seatno),
       examdate: text(req.body.examdate),
       examslot: text(req.body.examslot),
@@ -317,7 +320,13 @@ exports.uploadAnswerBook = async (req, res) => {
     // Also update ConductExamRoll for convenience
     await ConductExamRoll.updateOne(
       { colid, examcode, coursecode, regno },
-      { $set: { answerbookurl: fileData.url, answerbookfilename: fileData.filename } }
+      { $set: { answerbookurl: fileData.url, answerbookfilename: fileData.filename, cn: text(req.body.cn) } }
+    );
+
+    // Also update ConductExamExaminerAllotment
+    await ConductExamExaminerAllotment.updateMany(
+      { colid, coursecode, regno },
+      { $set: { answerbookurl: fileData.url, answerbookfilename: fileData.filename, cn: text(req.body.cn) } }
     );
 
     res.json({
@@ -325,6 +334,32 @@ exports.uploadAnswerBook = async (req, res) => {
       message: "Answer book uploaded successfully",
       data: answerBook
     });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 3.1 Save / Update CN (Unique Control / Copy Number)
+exports.saveAnswerBookCn = async (req, res) => {
+  try {
+    const colid = colNumber(req.body.colid || req.query.colid);
+    if (colid === undefined) return res.status(400).json({ success: false, message: "colid is required" });
+
+    const regno = text(req.body.regno);
+    const coursecode = text(req.body.coursecode);
+    const cn = text(req.body.cn);
+    if (!regno) return res.status(400).json({ success: false, message: "regno is required" });
+
+    const filter = { colid, regno };
+    if (coursecode) filter.coursecode = coursecode;
+
+    await Promise.all([
+      ConductExamAnswerBook.updateMany(filter, { $set: { cn } }),
+      ConductExamRoll.updateMany(filter, { $set: { cn } }),
+      ConductExamExaminerAllotment.updateMany(filter, { $set: { cn } })
+    ]);
+
+    res.json({ success: true, message: "CN updated successfully", cn });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -492,5 +527,36 @@ exports.serveAnswerBook = (req, res) => {
     res.sendFile(filePath);
   } catch (err) {
     res.status(500).send("Error serving file: " + err.message);
+  }
+};
+
+// 7. Proxy PDF for cross-origin viewing with PDF.js
+exports.proxyPdf = (req, res) => {
+  try {
+    const targetUrl = req.query.url;
+    if (!targetUrl) return res.status(400).send("url query param required");
+
+    if (!/^https?:\/\//i.test(targetUrl)) {
+      return res.status(400).send("Invalid target URL protocol");
+    }
+
+    const httpModule = targetUrl.startsWith("https") ? require("https") : require("http");
+    httpModule.get(targetUrl, (stream) => {
+      if (stream.statusCode >= 300 && stream.statusCode < 400 && stream.headers.location) {
+        const nextModule = stream.headers.location.startsWith("https") ? require("https") : require("http");
+        return nextModule.get(stream.headers.location, (redirStream) => {
+          res.setHeader("Content-Type", redirStream.headers["content-type"] || "application/pdf");
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          redirStream.pipe(res);
+        }).on("error", (e) => res.status(500).send("Stream redirect error: " + e.message));
+      }
+      res.setHeader("Content-Type", stream.headers["content-type"] || "application/pdf");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      stream.pipe(res);
+    }).on("error", (err) => {
+      res.status(500).send("Error streaming PDF: " + err.message);
+    });
+  } catch (err) {
+    res.status(500).send("Proxy error: " + err.message);
   }
 };

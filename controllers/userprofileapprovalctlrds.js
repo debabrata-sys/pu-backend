@@ -140,6 +140,66 @@ exports.saveWorkflow = async (req, res) => {
   }
 };
 
+exports.bulkSaveWorkflows = async (req, res) => {
+  try {
+    const colid = number(req.body.colid);
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    if (!colid) return res.status(400).json({ msg: 'colid is required', message: 'colid is required' });
+    if (!rows.length) return res.status(400).json({ msg: 'No rows provided', message: 'No rows provided' });
+
+    let saved = 0;
+    const errors = [];
+    const operations = [];
+
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index];
+      const rowNumber = index + 2;
+      const role = clean(row.role || row.Role);
+      const level = number(row.level || row.Level || 1);
+      const requesttype = clean(row.requesttype || row.RequestType || row.type || row.Type) || 'All';
+      const approverrole = clean(row.approverrole || row.ApproverRole || row['Approver Role']);
+      const approvername = clean(row.approvername || row.ApproverName || row['Approver Name']);
+      const approveremail = clean(row.approveremail || row.ApproverEmail || row['Approver Email']);
+      const status = clean(row.status || row.Status) || 'Active';
+
+      if (!role || !level) {
+        errors.push({ row: rowNumber, message: 'Role and level are required' });
+        continue;
+      }
+
+      const payload = {
+        colid,
+        role,
+        requesttype,
+        level,
+        approverrole,
+        approvername,
+        approveremail,
+        status,
+        user: clean(req.body.user)
+      };
+
+      operations.push({
+        updateOne: {
+          filter: { colid, role, requesttype, level },
+          update: { $set: payload },
+          upsert: true
+        }
+      });
+    }
+
+    if (operations.length > 0) {
+      const result = await UserProfileApprovalWorkflow.bulkWrite(operations);
+      saved = (result.upsertedCount || 0) + (result.modifiedCount || 0);
+    }
+
+    const msg = `Bulk upload completed. Saved/updated: ${saved}${errors.length ? `, errors: ${errors.length}` : ''}`;
+    res.json({ msg, message: msg, saved, errors });
+  } catch (err) {
+    res.status(500).json({ msg: err.message, message: err.message });
+  }
+};
+
 exports.deleteWorkflow = async (req, res) => {
   try {
     const data = await UserProfileApprovalWorkflow.findOneAndDelete({ _id: req.body.id || req.body._id, colid: number(req.body.colid) });

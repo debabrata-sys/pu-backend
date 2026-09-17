@@ -17,6 +17,9 @@ const conductExamExaminerAllotmentSchema = new mongoose.Schema({
   examineremail: { type: String, required: true, trim: true },
   student: { type: String, required: true, trim: true },
   regno: { type: String, required: true, trim: true },
+  cn: { type: String, trim: true, default: "" },
+  evaluatorid: { type: String, trim: true, default: "" },
+  totalmarksobtained: { type: Number, default: null },
   email: { type: String, trim: true, default: "" },
   seatno: { type: String, trim: true, default: "" },
   examdate: { type: String, trim: true, default: "" },
@@ -35,7 +38,9 @@ const conductExamExaminerAllotmentSchema = new mongoose.Schema({
   declarationdate: { type: Date },
   declarationdata: { type: Object, default: {} },
   billstatus: { type: String, trim: true, default: "Draft" },
-  billdata: { type: Object, default: {} }
+  billdata: { type: Object, default: {} },
+  verifiedpages: { type: Array, default: [] },
+  pagestamps: { type: Array, default: [] }
 }, { timestamps: true });
 
 conductExamExaminerAllotmentSchema.index({

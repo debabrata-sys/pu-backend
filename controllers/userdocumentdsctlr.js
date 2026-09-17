@@ -192,7 +192,7 @@ exports.uploadDocument = async (req, res) => {
       return res.status(400).json({ msg: 'Role, user and document name are required' });
     }
     const workflow = await documentWorkflow(colid, role);
-    if (!workflow.length) return res.status(400).json({ msg: `Document approval workflow is not configured for role ${role}` });
+    const hasWorkflow = Array.isArray(workflow) && workflow.length > 0;
 
     const config = await getAwsConfig(colid);
     if (!config?.username || !config?.password || !config?.bucket || !config?.region) {
@@ -239,47 +239,49 @@ exports.uploadDocument = async (req, res) => {
         mimetype: req.file.mimetype,
         size: req.file.size,
         url: s3Url(config.bucket, config.region, key),
-        status: 'Pending',
+        status: hasWorkflow ? 'Pending' : 'Uploaded',
         remarks: clean(req.body.remarks)
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    const approvalRequest = await UserDocumentApprovalRequest.findOneAndUpdate(
-      { colid, documentid: String(data._id), status: 'Pending' },
-      {
-        colid,
-        role,
-        owneruser,
-        ownername: clean(req.body.ownername),
-        documentid: String(data._id),
-        documentname,
-        url: data.url,
-        originalname: data.originalname,
-        level: 1,
-        status: 'Pending',
-        comments: ''
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    const firstApprovers = workflow.filter((item) => Number(item.level) === 1);
-    for (const approver of firstApprovers) {
-      await createApprovalTasks({
-        colid,
-        user: owneruser,
-        createdby: clean(req.body.ownername) || owneruser,
-        academicyear: '',
-        approvername: approver.approvername,
-        approveremail: approver.approveremail,
-        approverrole: approver.approverrole,
-        title: `Approve document ${documentname} for ${clean(req.body.ownername) || owneruser}`,
-        category: 'User document approval',
-        pagelink: '/userprofileapproval',
-        comments: `Document ${documentname} is pending approval at level 1.`,
-        referenceModel: 'userdocumentapprovalrequestds',
-        referenceId: approvalRequest._id,
-        level: 1
-      });
+    if (hasWorkflow) {
+      const approvalRequest = await UserDocumentApprovalRequest.findOneAndUpdate(
+        { colid, documentid: String(data._id), status: 'Pending' },
+        {
+          colid,
+          role,
+          owneruser,
+          ownername: clean(req.body.ownername),
+          documentid: String(data._id),
+          documentname,
+          url: data.url,
+          originalname: data.originalname,
+          level: 1,
+          status: 'Pending',
+          comments: ''
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      const firstApprovers = workflow.filter((item) => Number(item.level) === 1);
+      for (const approver of firstApprovers) {
+        await createApprovalTasks({
+          colid,
+          user: owneruser,
+          createdby: clean(req.body.ownername) || owneruser,
+          academicyear: '',
+          approvername: approver.approvername,
+          approveremail: approver.approveremail,
+          approverrole: approver.approverrole,
+          title: `Approve document ${documentname} for ${clean(req.body.ownername) || owneruser}`,
+          category: 'User document approval',
+          pagelink: '/userprofileapproval',
+          comments: `Document ${documentname} is pending approval at level 1.`,
+          referenceModel: 'userdocumentapprovalrequestds',
+          referenceId: approvalRequest._id,
+          level: 1
+        });
+      }
     }
 
     res.json(data);

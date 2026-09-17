@@ -155,6 +155,7 @@ const userProfileDisplayLayoutController = require('./controllers/userprofiledis
 const userDocumentController = require('./controllers/userdocumentdsctlr');
 const userBankAccountController = require('./controllers/userbankaccountctlrds');
 const userProfileDetailsController = require('./controllers/userprofiledetailsctlrds');
+const nonStudentUsersController = require('./controllers/nonstudentusersctlrds');
 const userProfileApprovalController = require('./controllers/userprofileapprovalctlrds');
 const userProfileAuditLogController = require('./controllers/userprofileauditlogctlrds');
 const userConsentController = require('./controllers/userconsentctlrds');
@@ -329,8 +330,13 @@ app.post('/api/v2/user-employment-details', userProfileDetailsController.saveEmp
 app.post('/api/v2/user-employment-details-delete', userProfileDetailsController.deleteEmployment);
 app.post('/api/v2/user-profile-detail-document-upload', userProfileDetailsController.uploadMiddleware, userProfileDetailsController.uploadDetailDocument);
 app.get('/api/v2/user-profile-details/profile', userProfileDetailsController.profile);
+app.get('/api/v2/non-student-users', nonStudentUsersController.getNonStudentUsers);
+app.post('/api/v2/non-student-users/update', nonStudentUsersController.updateNonStudentUser);
+app.post('/api/v2/non-student-users/bulk-delete', nonStudentUsersController.bulkDeleteNonStudentUsers);
+app.post('/api/v2/non-student-users/bulk-upload', nonStudentUsersController.bulkUploadNonStudentUsers);
 app.get('/api/v2/user-profile-approval-workflows', userProfileApprovalController.getWorkflows);
 app.post('/api/v2/user-profile-approval-workflows', userProfileApprovalController.saveWorkflow);
+app.post('/api/v2/user-profile-approval-workflows-bulk', userProfileApprovalController.bulkSaveWorkflows);
 app.post('/api/v2/user-profile-approval-workflows-delete', userProfileApprovalController.deleteWorkflow);
 app.get('/api/v2/user-profile-approval-users', userProfileApprovalController.getUsers);
 app.get('/api/v2/user-profile-approval-status', userProfileApprovalController.getMyStatus);
@@ -5432,6 +5438,9 @@ const conductexampayment2ctlrds = require("./controllers/conductexampayment2ctlr
 const conductexamexaminer2ctlrds = require("./controllers/conductexamexaminer2ctlrds");
 const conductexamonscreen2ctlrds = require("./controllers/conductexamonscreen2ctlrds");
 const conductexamanswerbook2ctlrds = require("./controllers/conductexamanswerbook2ctlrds");
+const conductexamawardlist2ctlrds = require("./controllers/conductexamawardlist2ctlrds");
+const conductexamreevaluation2ctlrds = require("./controllers/conductexamreevaluation2ctlrds");
+const conductexamvaluationsummary2ctlrds = require("./controllers/conductexamvaluationsummary2ctlrds");
 const conductexamcomponentallocation2ctlrds = require("./controllers/conductexamcomponentallocation2ctlrds");
 const conductexamstockctlrds = require("./controllers/conductexamstockctlrds");
 const conductexamstationaryctlrds = require("./controllers/conductexamstationaryctlrds");
@@ -6167,6 +6176,31 @@ app.post("/api/v2/conductexam2/upload-answerbook", conductexamanswerbook2ctlrds.
 app.post("/api/v2/conductexam2/bulk-upload-answerbooks", conductexamanswerbook2ctlrds.uploadMultipleMiddleware, conductexamanswerbook2ctlrds.bulkUploadAnswerBooks);
 app.post("/api/v2/conductexam2/delete-answerbook", conductexamanswerbook2ctlrds.deleteAnswerBook);
 app.get("/api/v2/conductexam2/answerbook-file/:filename", conductexamanswerbook2ctlrds.serveAnswerBook);
+app.get("/api/v2/conductexam2/proxy-pdf", conductexamanswerbook2ctlrds.proxyPdf);
+app.post("/api/v2/conductexam2/save-answerbook-cn", conductexamanswerbook2ctlrds.saveAnswerBookCn);
+
+// Conduct Exam 2 - Award List Report
+app.get("/api/v2/conductexam2/award-list-options", conductexamawardlist2ctlrds.getOptions);
+app.get("/api/v2/conductexam2/award-list", conductexamawardlist2ctlrds.getAwardList);
+
+// Conduct Exam 2 - Re-evaluation Workflow (V2, V3, V4)
+app.get("/api/v2/conductexam2/reevaluation-options", conductexamreevaluation2ctlrds.getOptions);
+app.get("/api/v2/conductexam2/reevaluation-eligible-students", conductexamreevaluation2ctlrds.getEligibleStudents);
+app.post("/api/v2/conductexam2/reevaluation-apply", conductexamreevaluation2ctlrds.applyReevaluation);
+app.post("/api/v2/conductexam2/reevaluation-allot", conductexamreevaluation2ctlrds.allotReevaluators);
+app.post("/api/v2/conductexam2/reevaluation-allot-3", conductexamreevaluation2ctlrds.allotReevaluator3);
+app.get("/api/v2/conductexam2/reevaluation-list", conductexamreevaluation2ctlrds.listReevaluations);
+app.post("/api/v2/conductexam2/reevaluation-decision", conductexamreevaluation2ctlrds.processDecision);
+
+// Conduct Exam 2 - Valuation Status Summary & Evaluator Quota Reports
+app.get("/api/v2/conductexam2/valuation-status-summary", conductexamvaluationsummary2ctlrds.getStatusSummaryReport);
+app.get("/api/v2/conductexam2/evaluator-quota-report", conductexamvaluationsummary2ctlrds.getEvaluatorQuotaReport);
+app.get("/api/v2/conductexam2/report-daily", conductexamvaluationsummary2ctlrds.getDayReport);
+app.get("/api/v2/conductexam2/report-monthly", conductexamvaluationsummary2ctlrds.getMonthlyValuationsReport);
+app.get("/api/v2/conductexam2/report-examiners", conductexamvaluationsummary2ctlrds.getExaminersReport);
+app.get("/api/v2/conductexam2/report-centerwise", conductexamvaluationsummary2ctlrds.getCenterWiseReport);
+app.get("/api/v2/conductexam2/report-serieswise", conductexamvaluationsummary2ctlrds.getSeriesWiseLog);
+app.get("/api/v2/conductexam2/report-skipped", conductexamvaluationsummary2ctlrds.getSkippedScriptsReport);
 
 // Conduct Exam 2 - Component Allocation & Monitoring
 app.get("/api/v2/conductexam2/component-allocation-options", conductexamcomponentallocation2ctlrds.options);
