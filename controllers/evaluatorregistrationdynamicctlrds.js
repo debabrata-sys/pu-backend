@@ -399,7 +399,8 @@ exports.getPublicForm = async (req, res) => {
       status: "Success",
       colid,
       institution,
-      data: form
+      data: form,
+      form
     });
   } catch (err) {
     return res.status(500).json({ status: "Error", message: err.message });
