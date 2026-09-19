@@ -1,4 +1,4 @@
-const apids = require('../models/apids');
+const apids = require('../Models/apids');
 
 // Create/Configure API
 exports.createapids = async (req, res) => {
