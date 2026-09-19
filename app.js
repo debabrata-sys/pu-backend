@@ -47,6 +47,7 @@ const phdModuleController = require("./controllers/phdmodulectlrds");
 const aiCodingAgentSchedulerController = require("./controllers/aicodingagentctlrds");
 aiCodingAgentSchedulerController.registerScheduler();
 const facultyRegistrationController = require("./controllers/facultyregistrationctlrds");
+const evaluatorRegistrationDynamicController = require("./controllers/evaluatorregistrationdynamicctlrds");
 
 const DB = (process.env.DATABASE || 'mongodb://127.0.0.1:27017/ep3').replace('<PASSWORD>', process.env.DATABASE_PASSWORD || '');
 const DB1 = process.env.DATABASE2 || DB || 'mongodb://127.0.0.1:27017/ep3';
@@ -1098,6 +1099,21 @@ app.post('/api/v2/faculty-registration-link/delete', facultyRegistrationControll
 app.get('/api/v2/faculty-registration-admin/list', facultyRegistrationController.getRegistrationRequests);
 app.get('/api/v2/faculty-registration-admin/detail/:id', facultyRegistrationController.getRegistrationDetail);
 app.post('/api/v2/faculty-registration-admin/action', facultyRegistrationController.processRegistrationAction);
+
+// Dynamic Evaluator & Faculty Registration Form Builder & Management
+app.get('/api/v2/evaluator-registration/user-model-catalog', evaluatorRegistrationDynamicController.getUserModelCatalog);
+app.get('/api/v2/evaluator-registration/custom-fields-catalog', evaluatorRegistrationDynamicController.getCustomFieldsCatalog);
+app.post('/api/v2/evaluator-registration/custom-fields', evaluatorRegistrationDynamicController.createCustomField);
+app.get('/api/v2/evaluator-registration/forms', evaluatorRegistrationDynamicController.getForms);
+app.post('/api/v2/evaluator-registration/forms', evaluatorRegistrationDynamicController.saveForm);
+app.post('/api/v2/evaluator-registration/forms-delete', evaluatorRegistrationDynamicController.deleteForm);
+app.get('/api/v2/evaluator-registration/public-form', evaluatorRegistrationDynamicController.getPublicForm);
+app.post('/api/v2/evaluator-registration/upload', evaluatorRegistrationDynamicController.uploadPublicFile);
+app.post('/api/v2/evaluator-registration/submit', evaluatorRegistrationDynamicController.submitPublicRegistration);
+app.get('/api/v2/evaluator-registration/submissions', evaluatorRegistrationDynamicController.getSubmissions);
+app.get('/api/v2/evaluator-registration/submission-details', evaluatorRegistrationDynamicController.getSubmissionDetails);
+app.post('/api/v2/evaluator-registration/process-action', evaluatorRegistrationDynamicController.processApprovalAction);
+
 app.get('/api/v2/legal-cases/options', legalCasesController.options);
 app.get('/api/v2/legal-cases/cases', legalCasesController.listCases);
 app.post('/api/v2/legal-cases/cases', legalCasesController.saveCase);
