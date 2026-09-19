@@ -150,7 +150,7 @@ async function seedData() {
     {
       colid,
       fieldname: "current_council_id",
-      label: "Medical/Dental Council ID",
+      label: "Applicable Regulatory Bodies / Council ID",
       type: "text",
       section: "Current Employment",
       isrequired: "Yes",
@@ -221,7 +221,7 @@ async function seedData() {
     {
       colid,
       fieldname: "past_council_id",
-      label: "Medical/Dental Council ID",
+      label: "Applicable Regulatory Bodies / Council ID",
       type: "text",
       section: "Past Employment (If any)",
       isrequired: "No",
@@ -439,7 +439,7 @@ async function seedData() {
     {
       id: "f_cur_council_id",
       fieldname: "current_council_id",
-      label: "Medical/Dental Council ID",
+      label: "Applicable Regulatory Bodies / Council ID",
       source: "custom_field",
       type: "text",
       required: true,
@@ -511,7 +511,7 @@ async function seedData() {
     {
       id: "f_past_council_id",
       fieldname: "past_council_id",
-      label: "Medical/Dental Council ID",
+      label: "Applicable Regulatory Bodies / Council ID",
       source: "custom_field",
       type: "text",
       required: false,
