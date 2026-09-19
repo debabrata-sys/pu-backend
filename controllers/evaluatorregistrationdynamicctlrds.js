@@ -185,7 +185,11 @@ exports.getUserModelCatalog = (req, res) => {
   return res.status(200).json({
     status: "Success",
     coreDefaultFields,
-    availableUserModelFields
+    availableUserModelFields,
+    data: {
+      essential: coreDefaultFields,
+      optional: availableUserModelFields
+    }
   });
 };
 
