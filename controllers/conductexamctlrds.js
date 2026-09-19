@@ -13,6 +13,7 @@ const AiConfiguration = require("../Models/aiconfigurationds");
 const OllamaConfiguration = require("../Models/ollamaconfigurationds");
 const InsDetails = require("../Models/insdetails");
 const ConductExamFormSubmission = require("../Models/conductexamformsubmissionds");
+const NepClassEnrollment = require("../Models/nepclassenrollmentds");
 
 const text = (value) => String(value || "").trim();
 const number = (value) => {
@@ -151,7 +152,19 @@ const buildAvailableSlots = (rows, holidaysByDate, fromDate, toDate, slots) => {
   return available;
 };
 
-const scheduleExamCourseRows = async ({ colid, filter, fromdate, todate, slot1, slot2, slots: inputSlots = [], useHrHolidayList = false, aiOrder = [] }) => {
+const scheduleExamCourseRows = async ({
+  colid,
+  filter,
+  fromdate,
+  todate,
+  slot1,
+  slot2,
+  slots: inputSlots = [],
+  useHrHolidayList = false,
+  aiOrder = [],
+  courseGaps = {},
+  defaultGap = 0
+}) => {
   const fromDate = parseDateOnly(fromdate);
   const toDate = parseDateOnly(todate);
   if (!fromDate || !toDate) throw new Error("Valid from date and to date are required");
@@ -183,15 +196,53 @@ const scheduleExamCourseRows = async ({ colid, filter, fromdate, todate, slot1, 
     return text(a.course).localeCompare(text(b.course));
   });
 
+  const lastDateByProgramSem = new Map();
   const usedSemestersBySlot = new Map();
+  const usedProgramSemDates = new Map();
   const assignments = [];
+
   for (const row of sortedRows) {
     const allowedKeys = rowAllowedSlotKeys.get(String(row._id)) || [];
-    const selectedKey = allowedKeys.find((key) => !usedSemestersBySlot.get(key)?.has(text(row.semester)));
-    if (!selectedKey) throw new Error(`No valid slot available for ${row.course || row.coursecode} semester ${row.semester}`);
+    const progSemKey = `${text(row.programcode)}||${text(row.semester)}`;
+    const courseGap = (courseGaps && courseGaps[row.coursecode] !== undefined && courseGaps[row.coursecode] !== "")
+      ? Math.max(0, Number(courseGaps[row.coursecode]))
+      : (defaultGap !== undefined && defaultGap !== "" ? Math.max(0, Number(defaultGap)) : 0);
+
+    const selectedKey = allowedKeys.find((key) => {
+      const [candidateDateStr] = key.split("||");
+      const candidateDate = parseDateOnly(candidateDateStr);
+
+      // Rule 1: No two courses of the same semester in the same slot
+      if (usedSemestersBySlot.get(key)?.has(text(row.semester))) return false;
+
+      // Rule 2: No two courses of the same program and semester on the same date
+      if (usedProgramSemDates.get(progSemKey)?.has(candidateDateStr)) return false;
+
+      // Rule 3: Enforce custom gap days between consecutive courses of the same program and semester
+      if (lastDateByProgramSem.has(progSemKey) && candidateDate) {
+        const lastDate = lastDateByProgramSem.get(progSemKey);
+        const diffDays = Math.round((candidateDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 0) return false;
+        if (courseGap > 0 && diffDays < courseGap + 1) return false;
+      }
+      return true;
+    });
+
+    if (!selectedKey) {
+      throw new Error(`No valid slot available for ${row.course || row.coursecode} (Program: ${row.programcode}, Sem: ${row.semester})${courseGap > 0 ? ` with gap of ${courseGap} day(s)` : ""}. Please extend date range or adjust gap.`);
+    }
+
     const [examdate, examslot] = selectedKey.split("||");
     if (!usedSemestersBySlot.has(selectedKey)) usedSemestersBySlot.set(selectedKey, new Set());
     usedSemestersBySlot.get(selectedKey).add(text(row.semester));
+
+    if (!usedProgramSemDates.has(progSemKey)) usedProgramSemDates.set(progSemKey, new Set());
+    usedProgramSemDates.get(progSemKey).add(examdate);
+
+    const scheduledDateObj = parseDateOnly(examdate);
+    if (scheduledDateObj) {
+      lastDateByProgramSem.set(progSemKey, scheduledDateObj);
+    }
     assignments.push({ id: row._id, examdate, examslot });
   }
 
@@ -795,7 +846,9 @@ exports.autoScheduleExamCourses = async (req, res) => {
       slot1: req.body.slot1,
       slot2: req.body.slot2,
       slots: req.body.slots,
-      useHrHolidayList: req.body.useHrHolidayList === true || /^yes$/i.test(text(req.body.useHrHolidayList))
+      useHrHolidayList: req.body.useHrHolidayList === true || /^yes$/i.test(text(req.body.useHrHolidayList)),
+      courseGaps: req.body.courseGaps || {},
+      defaultGap: req.body.defaultGap
     });
     res.json({ success: true, ...result, message: `${result.saved} papers scheduled.` });
   } catch (err) {
@@ -847,11 +900,125 @@ exports.aiScheduleExamCourses = async (req, res) => {
       slot2: req.body.slot2,
       slots: req.body.slots,
       useHrHolidayList: req.body.useHrHolidayList === true || /^yes$/i.test(text(req.body.useHrHolidayList)),
-      aiOrder
+      aiOrder,
+      courseGaps: req.body.courseGaps || {},
+      defaultGap: req.body.defaultGap
     });
     res.json({ success: true, ...result, aiText, message: `${result.saved} papers scheduled with Gemini guidance.` });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+exports.getCourseStudentStrength = async (req, res) => {
+  try {
+    const colid = number(req.query.colid);
+    if (colid === undefined) return res.status(400).json({ success: false, message: "colid is required" });
+    const academicyear = text(req.query.academicyear);
+    const examcode = text(req.query.examcode);
+    if (!academicyear || !examcode) return res.status(400).json({ success: false, message: "academicyear and examcode are required" });
+
+    let programcodes = [];
+    if (req.query.programcodes) {
+      if (Array.isArray(req.query.programcodes)) programcodes = req.query.programcodes.map(text).filter(Boolean);
+      else programcodes = text(req.query.programcodes).split(",").map(text).filter(Boolean);
+    }
+
+    const courseFilter = { colid, academicyear, examcode };
+    if (programcodes.length) courseFilter.programcode = { $in: programcodes };
+
+    const courses = await ConductExamCourse.find(courseFilter).sort({ program: 1, semester: 1, course: 1 }).lean();
+    if (!courses.length) {
+      return res.json({
+        success: true,
+        data: [],
+        summary: { totalCourses: 0, totalStudents: 0, scheduledCourses: 0, unscheduledCourses: 0 }
+      });
+    }
+
+    // 1. ConductExamRoll counts
+    const rollCounts = await ConductExamRoll.aggregate([
+      { $match: { colid, academicyear, examcode } },
+      { $group: { _id: { coursecode: "$coursecode", programcode: "$programcode", semester: "$semester" }, count: { $sum: 1 } } }
+    ]);
+    const rollMap = new Map();
+    rollCounts.forEach((r) => {
+      const key = `${text(r._id?.coursecode)}||${text(r._id?.programcode)}||${text(r._id?.semester)}`;
+      rollMap.set(key, r.count);
+      const codeKey = text(r._id?.coursecode);
+      rollMap.set(codeKey, (rollMap.get(codeKey) || 0) + r.count);
+    });
+
+    // 2. NepClassEnrollment counts
+    const enrollmentCounts = await NepClassEnrollment.aggregate([
+      { $match: { colid, academicyear } },
+      { $group: { _id: { coursecode: "$coursecode", programcode: "$programcode", semester: "$semester" }, count: { $sum: 1 } } }
+    ]);
+    const enrollMap = new Map();
+    enrollmentCounts.forEach((r) => {
+      const key = `${text(r._id?.coursecode)}||${text(r._id?.programcode)}||${text(r._id?.semester)}`;
+      enrollMap.set(key, r.count);
+      const codeKey = text(r._id?.coursecode);
+      enrollMap.set(codeKey, (enrollMap.get(codeKey) || 0) + r.count);
+    });
+
+    // 3. User student counts per program & semester
+    const userStudentCounts = await User.aggregate([
+      { $match: { colid, role: /^student$/i, status: { $ne: "Inactive" } } },
+      { $group: { _id: { programcode: "$programcode", semester: "$semester" }, count: { $sum: 1 } } }
+    ]);
+    const userMap = new Map();
+    userStudentCounts.forEach((r) => {
+      const key = `${text(r._id?.programcode)}||${text(r._id?.semester)}`;
+      userMap.set(key, r.count);
+    });
+
+    let totalStudents = 0;
+    const strengthData = courses.map((course) => {
+      const fullKey = `${text(course.coursecode)}||${text(course.programcode)}||${text(course.semester)}`;
+      let count = rollMap.get(fullKey) || rollMap.get(text(course.coursecode)) || 0;
+      let source = "ConductExamRoll";
+      if (!count) {
+        count = enrollMap.get(fullKey) || enrollMap.get(text(course.coursecode)) || 0;
+        source = count ? "NepClassEnrollment" : "None";
+      }
+      if (!count) {
+        const progSemKey = `${text(course.programcode)}||${text(course.semester)}`;
+        count = userMap.get(progSemKey) || 0;
+        source = count ? "UserProgramSemester" : "None";
+      }
+      totalStudents += count;
+      return {
+        _id: course._id,
+        coursecode: course.coursecode,
+        course: course.course,
+        program: course.program,
+        programcode: course.programcode,
+        semester: course.semester,
+        regulation: course.regulation,
+        type: course.type,
+        subject: course.subject,
+        coursetype: course.coursetype || "Theory",
+        deliverytype: course.deliverytype || "",
+        examdate: course.examdate || "",
+        examslot: course.examslot || "",
+        studentStrength: count,
+        strengthSource: source
+      };
+    });
+
+    res.json({
+      success: true,
+      data: strengthData,
+      summary: {
+        totalCourses: courses.length,
+        totalStudents,
+        scheduledCourses: courses.filter((c) => c.examdate).length,
+        unscheduledCourses: courses.filter((c) => !c.examdate).length
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 

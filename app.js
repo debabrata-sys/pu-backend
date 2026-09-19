@@ -5901,6 +5901,7 @@ app.get("/api/v2/feedback-advanced/analysis", feedbackadvancedctlrds.analysis);
 app.post("/api/v2/feedback-advanced/analyze-sentiment", feedbackadvancedctlrds.analyzeSentiment);
 app.post("/api/v2/conductexam/examcourses-autoschedule", conductexamctlrds.autoScheduleExamCourses);
 app.post("/api/v2/conductexam/examcourses-ai-schedule", conductexamctlrds.aiScheduleExamCourses);
+app.get("/api/v2/conductexam/course-student-strength", conductexamctlrds.getCourseStudentStrength);
 app.get("/api/v2/conductexam/atkt-scheduler-data", conductexamctlrds.getAtktSchedulerData);
 app.post("/api/v2/conductexam/atkt-scheduler-confirm", conductexamctlrds.confirmAtktScheduler);
 app.get("/api/v2/conductexam/examrolls", conductexamctlrds.getExamRolls);
