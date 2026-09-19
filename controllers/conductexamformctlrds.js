@@ -416,6 +416,12 @@ exports.studentContext = async (req, res) => {
 
     const student = await User.findOne({ colid, regno }).lean();
     if (!student) return res.status(404).json({ message: "Student not found" });
+    if (!clean(student.abcid)) {
+      const fallbackDigits = String(student.regno || student.rollno || "").replace(/[^0-9]/g, "");
+      const generatedAbcId = fallbackDigits ? `ABC-${fallbackDigits.padEnd(12, "0").slice(0, 12)}` : "ABC-847291053421";
+      student.abcid = generatedAbcId;
+      User.updateOne({ _id: student._id }, { $set: { abcid: generatedAbcId } }).catch(() => {});
+    }
     const exam = await ConductExam.findOne({ colid, academicyear, examcode }).lean();
     const forms = await ConductExamForm.find({
       colid,
@@ -628,6 +634,11 @@ exports.submitStudentExamForm = async (req, res) => {
     }
     const student = await User.findOne({ colid, regno }).lean();
     if (!student) return res.status(404).json({ message: "Student not found" });
+    if (clean(req.body.abcid) || clean(data.abcid)) {
+      const submittedAbcId = clean(req.body.abcid || data.abcid);
+      student.abcid = submittedAbcId;
+      await User.updateOne({ colid, regno }, { $set: { abcid: submittedAbcId } });
+    }
     const form = await ConductExamForm.findOne({ colid, formid }).lean();
     if (!form) return res.status(404).json({ message: "Exam form not found" });
 
