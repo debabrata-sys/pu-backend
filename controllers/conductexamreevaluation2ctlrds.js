@@ -82,6 +82,7 @@ async function evaluateDecision(record) {
     return record;
   }
 
+  await record.save();
   return record;
 }
 

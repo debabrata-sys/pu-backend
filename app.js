@@ -46,6 +46,7 @@ const mcaMarksheetController = require("./controllers/mcamarksheetctlrds");
 const phdModuleController = require("./controllers/phdmodulectlrds");
 const aiCodingAgentSchedulerController = require("./controllers/aicodingagentctlrds");
 aiCodingAgentSchedulerController.registerScheduler();
+const facultyRegistrationController = require("./controllers/facultyregistrationctlrds");
 
 const DB = (process.env.DATABASE || 'mongodb://127.0.0.1:27017/ep3').replace('<PASSWORD>', process.env.DATABASE_PASSWORD || '');
 const DB1 = process.env.DATABASE2 || DB || 'mongodb://127.0.0.1:27017/ep3';
@@ -1083,6 +1084,20 @@ app.get('/api/v2/institution-management/:kind', institutionManagementController.
 app.post('/api/v2/institution-management/:kind', institutionManagementController.save);
 app.post('/api/v2/institution-management/:kind/bulk', institutionManagementController.bulk);
 app.post('/api/v2/institution-management/:kind/delete', institutionManagementController.remove);
+
+// Faculty & Valuator Self-Registration Routes
+app.post('/api/v2/faculty-registration-public/upload', facultyRegistrationController.uploadPublicFile);
+app.get('/api/v2/faculty-registration-public/info', facultyRegistrationController.getPublicRegistrationInfo);
+app.post('/api/v2/faculty-registration-public/submit', facultyRegistrationController.submitPublicRegistration);
+
+app.post('/api/v2/faculty-registration-link', facultyRegistrationController.createLink);
+app.get('/api/v2/faculty-registration-link', facultyRegistrationController.getLinks);
+app.post('/api/v2/faculty-registration-link/toggle', facultyRegistrationController.toggleLinkStatus);
+app.post('/api/v2/faculty-registration-link/delete', facultyRegistrationController.deleteLink);
+
+app.get('/api/v2/faculty-registration-admin/list', facultyRegistrationController.getRegistrationRequests);
+app.get('/api/v2/faculty-registration-admin/detail/:id', facultyRegistrationController.getRegistrationDetail);
+app.post('/api/v2/faculty-registration-admin/action', facultyRegistrationController.processRegistrationAction);
 app.get('/api/v2/legal-cases/options', legalCasesController.options);
 app.get('/api/v2/legal-cases/cases', legalCasesController.listCases);
 app.post('/api/v2/legal-cases/cases', legalCasesController.saveCase);
@@ -6196,6 +6211,7 @@ app.post("/api/v2/conductexam2/save-answerbook-cn", conductexamanswerbook2ctlrds
 // Conduct Exam 2 - Award List Report
 app.get("/api/v2/conductexam2/award-list-options", conductexamawardlist2ctlrds.getOptions);
 app.get("/api/v2/conductexam2/award-list", conductexamawardlist2ctlrds.getAwardList);
+app.get("/api/v2/conductexam2/award-list/download", conductexamawardlist2ctlrds.downloadAwardListCsv);
 
 // Conduct Exam 2 - Re-evaluation Workflow (V2, V3, V4)
 app.get("/api/v2/conductexam2/reevaluation-options", conductexamreevaluation2ctlrds.getOptions);

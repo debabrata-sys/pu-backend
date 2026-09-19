@@ -383,3 +383,36 @@ exports.getAwardList = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// 3. Download Award List as CSV
+exports.downloadAwardListCsv = async (req, res) => {
+  try {
+    const { generateCsv } = require("../helpers/awardListCsvHelper");
+
+    // Collect the JSON that getAwardList would have sent
+    let jsonData = null;
+    const fakeRes = {
+      status: () => fakeRes,
+      json: (data) => { jsonData = data; }
+    };
+    await exports.getAwardList(req, fakeRes);
+
+    if (!jsonData || !jsonData.success) {
+      return res.status(400).json(jsonData || { success: false, message: "Failed to generate award list" });
+    }
+
+    const { students, meta } = jsonData;
+    const csv = generateCsv(students, meta);
+
+    const valuationtype = String(req.query.valuationtype || "V1").toUpperCase();
+    const examcode = String(req.query.examcode || "").trim();
+    const coursecode = String(req.query.coursecode || "").trim();
+    const filename = `AwardList_${valuationtype}_${examcode}_${coursecode}.csv`.replace(/[^a-zA-Z0-9_\-.]/g, "_");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send("\uFEFF" + csv); // BOM for Excel compatibility
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

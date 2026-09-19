@@ -1039,34 +1039,50 @@ exports.finalizeStudent = async (req, res) => {
     await ConductExamOnScreenMark.updateMany({ colid, paperid, regno: payload.regno, valuationtype }, { $set: { finalized: "Yes" } });
 
     if (valuationtype !== "V1") {
-      const reval = await ConductExamReevaluation.findOne({
+      const examcode = text(req.body.examcode || paper.examcode);
+      const coursecode = text(req.body.coursecode || paper.coursecode);
+      let reval = await ConductExamReevaluation.findOne({
         colid,
-        examcode: paper.examcode,
-        coursecode: paper.coursecode,
-        regno: payload.regno
+        coursecode,
+        regno: payload.regno,
+        ...(examcode ? { examcode } : {})
       });
+      if (!reval) {
+        reval = await ConductExamReevaluation.findOne({
+          colid,
+          coursecode,
+          regno: payload.regno
+        });
+      }
 
       if (reval) {
         const timeSec = number(req.body.evaluationTimeSeconds) || 0;
         if (valuationtype === "V2") {
+          if (!reval.reevaluator1) reval.reevaluator1 = {};
           reval.reevaluator1.marks = total;
           reval.reevaluator1.status = "Evaluated";
           reval.reevaluator1.evaluatedAt = new Date();
           reval.reevaluator1.evaluationTimeSeconds = timeSec;
+          reval.markModified("reevaluator1");
         } else if (valuationtype === "V3") {
+          if (!reval.reevaluator2) reval.reevaluator2 = {};
           reval.reevaluator2.marks = total;
           reval.reevaluator2.status = "Evaluated";
           reval.reevaluator2.evaluatedAt = new Date();
           reval.reevaluator2.evaluationTimeSeconds = timeSec;
+          reval.markModified("reevaluator2");
         } else if (valuationtype === "V4") {
+          if (!reval.reevaluator3) reval.reevaluator3 = {};
           reval.reevaluator3.marks = total;
           reval.reevaluator3.status = "Evaluated";
           reval.reevaluator3.evaluatedAt = new Date();
           reval.reevaluator3.evaluationTimeSeconds = timeSec;
+          reval.markModified("reevaluator3");
         }
 
         const { evaluateDecision } = require("./conductexamreevaluation2ctlrds");
         await evaluateDecision(reval);
+        await reval.save();
       }
     } else {
       await ConductExamExaminerAllotment.updateOne(
@@ -1086,12 +1102,30 @@ exports.finalizeStudent = async (req, res) => {
     }
 
     // Find next pending student
-    const nextStudent = await ConductExamExaminerAllotment.findOne({
-      colid,
-      coursecode: payload.coursecode,
-      regno: { $ne: payload.regno },
-      evaluationstatus: { $nin: ["Evaluated", "Rejected"] }
-    }).sort({ regno: 1 }).lean();
+    let nextStudent = null;
+    if (valuationtype !== "V1") {
+      const coursecode = text(req.body.coursecode || paper.coursecode);
+      const examcode = text(req.body.examcode || paper.examcode);
+      let nextFilter = {
+        colid,
+        coursecode,
+        regno: { $ne: payload.regno },
+        ...(valuationtype === "V2"
+          ? { "reevaluator1.status": { $ne: "Evaluated" } }
+          : valuationtype === "V3"
+          ? { "reevaluator2.status": { $ne: "Evaluated" } }
+          : { "reevaluator3.status": { $ne: "Evaluated" } })
+      };
+      if (examcode) nextFilter.examcode = examcode;
+      nextStudent = await ConductExamReevaluation.findOne(nextFilter).sort({ regno: 1 }).lean();
+    } else {
+      nextStudent = await ConductExamExaminerAllotment.findOne({
+        colid,
+        coursecode: payload.coursecode,
+        regno: { $ne: payload.regno },
+        evaluationstatus: { $nin: ["Evaluated", "Rejected"] }
+      }).sort({ regno: 1 }).lean();
+    }
 
     res.json({
       success: true,

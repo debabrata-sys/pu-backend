@@ -100,6 +100,35 @@ exports.getStatusSummaryReport = async (req, res) => {
       const canViewV3AwardList = revalApplied > 0 && v3Valuated > 0;
       const canViewV4AwardList = revalApplied > 0 && v4Valuated > 0;
 
+      // Evaluated marks averages per valuation round
+      const v1MarksArr = grp.allotments
+        .map((a) => Number(a.totalmarksobtained ?? ""))
+        .filter((v) => !Number.isNaN(v) && v > 0);
+      const v1AvgMarks = v1MarksArr.length
+        ? (v1MarksArr.reduce((s, v) => s + v, 0) / v1MarksArr.length).toFixed(1)
+        : null;
+
+      const v2MarksArr2 = courseRevals
+        .filter((r) => r.reevaluator1?.marks !== null && r.reevaluator1?.marks !== undefined && r.reevaluator1?.marks !== "")
+        .map((r) => Number(r.reevaluator1.marks));
+      const v2AvgMarks = v2MarksArr2.length
+        ? (v2MarksArr2.reduce((s, v) => s + v, 0) / v2MarksArr2.length).toFixed(1)
+        : null;
+
+      const v3MarksArr2 = courseRevals
+        .filter((r) => r.reevaluator2?.marks !== null && r.reevaluator2?.marks !== undefined && r.reevaluator2?.marks !== "")
+        .map((r) => Number(r.reevaluator2.marks));
+      const v3AvgMarks = v3MarksArr2.length
+        ? (v3MarksArr2.reduce((s, v) => s + v, 0) / v3MarksArr2.length).toFixed(1)
+        : null;
+
+      const v4MarksArr2 = courseRevals
+        .filter((r) => r.reevaluator3?.marks !== null && r.reevaluator3?.marks !== undefined && r.reevaluator3?.marks !== "")
+        .map((r) => Number(r.reevaluator3.marks));
+      const v4AvgMarks = v4MarksArr2.length
+        ? (v4MarksArr2.reduce((s, v) => s + v, 0) / v4MarksArr2.length).toFixed(1)
+        : null;
+
       const awardListV1Url = `/conduct-exam-2-award-list?examcode=${encodeURIComponent(grp.examcode)}&coursecode=${encodeURIComponent(grp.coursecode)}&academicyear=${encodeURIComponent(grp.academicyear || "")}&valuationtype=V1`;
       const awardListV2Url = `/conduct-exam-2-award-list?examcode=${encodeURIComponent(grp.examcode)}&coursecode=${encodeURIComponent(grp.coursecode)}&academicyear=${encodeURIComponent(grp.academicyear || "")}&valuationtype=V2`;
       const awardListV3Url = `/conduct-exam-2-award-list?examcode=${encodeURIComponent(grp.examcode)}&coursecode=${encodeURIComponent(grp.coursecode)}&academicyear=${encodeURIComponent(grp.academicyear || "")}&valuationtype=V3`;
@@ -140,7 +169,11 @@ exports.getStatusSummaryReport = async (req, res) => {
         awardListV2Url,
         awardListV3Url,
         awardListV4Url,
-        awardListUrl: awardListV1Url
+        awardListUrl: awardListV1Url,
+        v1AvgMarks,
+        v2AvgMarks,
+        v3AvgMarks,
+        v4AvgMarks
       });
     });
 
@@ -196,6 +229,7 @@ exports.getEvaluatorQuotaReport = async (req, res) => {
           subjectName: a.course,
           examCode: a.examcode,
           examName: a.exam,
+          academicyear: a.academicyear,
           allotments: []
         });
       }
@@ -219,6 +253,7 @@ exports.getEvaluatorQuotaReport = async (req, res) => {
         subjectCode: grp.subjectCode,
         subjectName: grp.subjectName,
         examCode: grp.examCode,
+        academicyear: grp.academicyear,
         noScriptsEvaluated: evaluatedCount,
         totalScripts,
         pendingScripts,
