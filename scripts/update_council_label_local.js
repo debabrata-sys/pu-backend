@@ -13,7 +13,13 @@ async function run() {
 
   // 1. Update usercustomfieldds
   const cfRes = await UserCustomField.updateMany(
-    { fieldname: { $in: ["current_council_id", "past_council_id", "medical_dental_council_id", "council_id"] } },
+    {
+      $or: [
+        { fieldname: { $in: ["current_council_id", "past_council_id", "medical_dental_council_id", "medical_council_id", "council_id"] } },
+        { label: /Medical\/Dental/i },
+        { label: /Medical\/Dentistry/i }
+      ]
+    },
     { $set: { label: newLabel } }
   );
   console.log("Updated usercustomfieldds modifiedCount:", cfRes.modifiedCount);
