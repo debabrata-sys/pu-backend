@@ -92,24 +92,25 @@ const getActiveEmailConfig = async (colid) => {
 const sendWelcomeEmail = async ({ colid, recipientEmail, recipientName, password, institutionName }) => {
   try {
     const config = await getActiveEmailConfig(colid);
-    let transporter;
-
-    if (config?.username && config?.password) {
-      const port = Number(config.port || 587);
-      const host = config.smtp || config.smptp || (/gmail/i.test(config.provider || "") ? "smtp.gmail.com" : "");
-      transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user: config.username, pass: config.password }
-      });
-    } else {
-      transporter = nodemailer.createTransport({
-        host: "smtp.ethereal.email",
-        port: 587,
-        auth: { user: "ethereal.user@ethereal.email", pass: "ethereal_password" }
-      });
+    if (!config?.username || !config?.password) {
+      return { sent: false, error: "Email configuration not found or inactive" };
     }
+
+    const port = Number(config.port || 587);
+    const host = config.smtp || config.smptp || (/gmail/i.test(config.provider || "") ? "smtp.gmail.com" : "");
+    if (!host) {
+      return { sent: false, error: "SMTP host not configured" };
+    }
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user: config.username, pass: config.password },
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 5000
+    });
 
     const appUrl = process.env.CLIENT_URL || "http://localhost:3000";
     const subject = `Welcome to ${institutionName} - Login Credentials`;
@@ -132,7 +133,7 @@ const sendWelcomeEmail = async ({ colid, recipientEmail, recipientName, password
     `;
 
     await transporter.sendMail({
-      from: config?.username ? `"${institutionName}" <${config.username}>` : `"Administration" <no-reply@peoplesuniversity.edu.in>`,
+      from: `"${institutionName}" <${config.username}>`,
       to: recipientEmail,
       subject,
       text,
@@ -141,7 +142,7 @@ const sendWelcomeEmail = async ({ colid, recipientEmail, recipientName, password
 
     return { sent: true };
   } catch (err) {
-    console.error("Error sending welcome email:", err.message);
+    console.error("sendWelcomeEmail error:", err.message);
     return { sent: false, error: err.message };
   }
 };
@@ -651,6 +652,16 @@ exports.processApprovalAction = async (req, res) => {
       const generatedPassword = `Pass@${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
       const finalRole = submission.role || "Faculty";
 
+      const dept =
+        submission.fieldValues?.department ||
+        submission.fieldValues?.faculty_type ||
+        submission.fieldValues?.faculty ||
+        submission.fieldValues?.current_specialization ||
+        submission.fieldValues?.specialization ||
+        submission.fieldValues?.current_institution ||
+        finalRole ||
+        "General";
+
       // 1. Prepare User Model Payload
       const userPayload = {
         name: submission.fullname,
@@ -658,7 +669,9 @@ exports.processApprovalAction = async (req, res) => {
         phone: submission.mobile,
         role: finalRole,
         colid: Number(colid),
-        status: "Active",
+        department: String(dept).trim(),
+        status: 1, // Number required by User schema (1 = Active)
+        status1: "Active",
         customFields: submission.customFields || {}
       };
 
@@ -674,16 +687,38 @@ exports.processApprovalAction = async (req, res) => {
         }
       });
 
+      // Additional fallbacks for common fields
+      if (!userPayload.designation && submission.fieldValues?.current_designation) {
+        userPayload.designation = submission.fieldValues.current_designation;
+      }
+      if (!userPayload.institution && submission.fieldValues?.current_institution) {
+        userPayload.institution = submission.fieldValues.current_institution;
+      }
+      if (!userPayload.department) {
+        userPayload.department = String(dept).trim();
+      }
+
       // 2. Create or Update in User Model
       let existingUser = await User.findOne({ email: userEmail });
       let finalPassword = generatedPassword;
 
       if (existingUser) {
         Object.assign(existingUser, userPayload);
-        existingUser.customFields = {
-          ...(existingUser.customFields || {}),
-          ...(submission.customFields || {})
-        };
+        existingUser.status = 1;
+        existingUser.status1 = "Active";
+        if (!existingUser.department) {
+          existingUser.department = userPayload.department;
+        }
+        if (submission.customFields && typeof submission.customFields === "object") {
+          if (!existingUser.customFields) existingUser.customFields = new Map();
+          for (const [k, v] of Object.entries(submission.customFields)) {
+            if (existingUser.customFields instanceof Map) {
+              existingUser.customFields.set(k, v);
+            } else {
+              existingUser.customFields[k] = v;
+            }
+          }
+        }
         await existingUser.save();
       } else {
         const dummyRegNo = `FAC-${Date.now().toString().slice(-6)}`;
