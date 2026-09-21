@@ -412,13 +412,21 @@ exports.getPublicForm = async (req, res) => {
 // =============================================================
 exports.submitPublicRegistration = async (req, res) => {
   try {
-    const { colid, formtoken, fieldValues = {}, customFields = {}, bankDetails = {}, photolink, signaturelink, documentlinks = {} } = req.body;
+    const colid = Number(req.body.colid || req.query.colid) || 1;
+    const token = String(req.body.token || req.body.formtoken || req.query.token || "").trim();
+    const { fieldValues = {}, customFields = {}, bankDetails = {}, photolink, signaturelink, documentlinks = {} } = req.body;
 
-    if (!colid || !formtoken) {
-      return res.status(400).json({ status: "Error", message: "colid and formtoken are required" });
+    if (!colid || (!token && !req.body.formid)) {
+      return res.status(400).json({ status: "Error", message: "colid and token are required" });
     }
 
-    const form = await EvaluatorRegistrationForm.findOne({ token: formtoken, colid: Number(colid) });
+    let form = null;
+    if (token) {
+      form = await EvaluatorRegistrationForm.findOne({ token, colid });
+    }
+    if (!form && req.body.formid) {
+      form = await EvaluatorRegistrationForm.findOne({ _id: req.body.formid, colid });
+    }
     if (!form) {
       return res.status(404).json({ status: "Error", message: "Registration form not found or link is invalid" });
     }
@@ -535,6 +543,15 @@ exports.getSubmissions = async (req, res) => {
 
     const submissions = await EvaluatorRegistrationSubmission.find(query).sort({ createdAt: -1 }).lean();
 
+    const normalizedSubmissions = submissions.map((sub) => ({
+      ...sub,
+      applicantName: sub.applicantName || sub.fullname || sub.fieldValues?.name || "",
+      applicantEmail: sub.applicantEmail || sub.email || sub.fieldValues?.email || "",
+      applicantPhone: sub.applicantPhone || sub.mobile || sub.fieldValues?.phone || "",
+      applicantRole: sub.applicantRole || sub.role || "Faculty",
+      formTitle: sub.formTitle || sub.formtitle || "Evaluator Registration"
+    }));
+
     // Summary counts
     const allColidSubmissions = await EvaluatorRegistrationSubmission.find({ colid }).select("status").lean();
     const summary = {
@@ -547,7 +564,7 @@ exports.getSubmissions = async (req, res) => {
 
     return res.status(200).json({
       status: "Success",
-      data: submissions,
+      data: normalizedSubmissions,
       summary
     });
   } catch (err) {
@@ -563,10 +580,20 @@ exports.getSubmissionDetails = async (req, res) => {
     const colid = Number(req.query.colid) || 1;
     const { id } = req.query;
 
-    const submission = await EvaluatorRegistrationSubmission.findOne({ _id: id, colid }).lean();
+    let submission = (await EvaluatorRegistrationSubmission.findOne({ _id: id, colid }).lean())
+      || (await EvaluatorRegistrationSubmission.findById(id).lean());
     if (!submission) {
       return res.status(404).json({ status: "Error", message: "Submission not found" });
     }
+
+    submission = {
+      ...submission,
+      applicantName: submission.applicantName || submission.fullname || submission.fieldValues?.name || "",
+      applicantEmail: submission.applicantEmail || submission.email || submission.fieldValues?.email || "",
+      applicantPhone: submission.applicantPhone || submission.mobile || submission.fieldValues?.phone || "",
+      applicantRole: submission.applicantRole || submission.role || "Faculty",
+      formTitle: submission.formTitle || submission.formtitle || "Evaluator Registration"
+    };
 
     const form = await EvaluatorRegistrationForm.findById(submission.formid).lean();
 
@@ -585,13 +612,18 @@ exports.getSubmissionDetails = async (req, res) => {
 // =============================================================
 exports.processApprovalAction = async (req, res) => {
   try {
-    const { id, colid, action, remarks, user: adminUser } = req.body;
+    const id = req.body.id || req.body.submissionId || req.body._id;
+    const colid = Number(req.body.colid || req.query.colid) || 1;
+    const action = req.body.action;
+    const remarks = req.body.remarks || "";
+    const adminUser = req.body.user || req.body.reviewedby || "Admin";
 
     if (!id || !colid || !action) {
       return res.status(400).json({ status: "Error", message: "id, colid, and action are required" });
     }
 
-    const submission = await EvaluatorRegistrationSubmission.findOne({ _id: id, colid: Number(colid) });
+    const submission = (await EvaluatorRegistrationSubmission.findOne({ _id: id, colid: Number(colid) }))
+      || (await EvaluatorRegistrationSubmission.findById(id));
     if (!submission) {
       return res.status(404).json({ status: "Error", message: "Registration submission not found" });
     }
@@ -751,6 +783,7 @@ exports.processApprovalAction = async (req, res) => {
         status: "Success",
         message: "Application approved! User account created, bank & signature populated, and credentials emailed.",
         credentials: {
+          username: userEmail,
           email: userEmail,
           password: finalPassword,
           role: finalRole,
