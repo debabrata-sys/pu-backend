@@ -566,7 +566,8 @@ exports.getSubmissions = async (req, res) => {
     return res.status(200).json({
       status: "Success",
       data: normalizedSubmissions,
-      summary
+      summary,
+      stats: summary
     });
   } catch (err) {
     return res.status(500).json({ status: "Error", message: err.message });
@@ -832,6 +833,172 @@ exports.processApprovalAction = async (req, res) => {
     return res.status(400).json({ status: "Error", message: `Invalid action: ${action}` });
   } catch (err) {
     console.error("processApprovalAction error:", err);
+    return res.status(500).json({ status: "Error", message: err.message });
+  }
+};
+
+// =============================================================
+// API 13: Admin Update Submission & Sync with User Model
+// =============================================================
+exports.updateSubmission = async (req, res) => {
+  try {
+    const colid = Number(req.body.colid || req.query.colid) || 1;
+    const id = req.body.id || req.body.submissionId || req.body._id;
+    const {
+      fullname,
+      email,
+      mobile,
+      role,
+      department,
+      designation,
+      institution,
+      status,
+      adminremarks,
+      bankDetails,
+      fieldValues,
+      customFields,
+      user: adminUser
+    } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ status: "Error", message: "Submission id is required" });
+    }
+
+    const submission =
+      (await EvaluatorRegistrationSubmission.findOne({ _id: id, colid })) ||
+      (await EvaluatorRegistrationSubmission.findById(id));
+    if (!submission) {
+      return res.status(404).json({ status: "Error", message: "Submission not found" });
+    }
+
+    const oldEmail = submission.email;
+
+    // 1. Update submission core fields
+    if (fullname !== undefined) submission.fullname = String(fullname).trim();
+    if (email !== undefined) submission.email = String(email).toLowerCase().trim();
+    if (mobile !== undefined) submission.mobile = String(mobile).trim();
+    if (role !== undefined) submission.role = String(role).trim();
+    if (status !== undefined) submission.status = status;
+    if (adminremarks !== undefined) submission.adminremarks = adminremarks;
+    if (adminUser) submission.actionby = adminUser;
+    submission.actiondate = new Date();
+
+    // 2. Update dynamic fields and custom fields
+    if (fieldValues && typeof fieldValues === "object") {
+      submission.fieldValues = {
+        ...(submission.fieldValues || {}),
+        ...fieldValues
+      };
+    }
+    if (customFields && typeof customFields === "object") {
+      submission.customFields = {
+        ...(submission.customFields || {}),
+        ...customFields
+      };
+    }
+
+    if (department) {
+      submission.fieldValues = submission.fieldValues || {};
+      submission.fieldValues.department = department;
+    }
+    if (designation) {
+      submission.fieldValues = submission.fieldValues || {};
+      submission.fieldValues.designation = designation;
+      submission.fieldValues.current_designation = designation;
+    }
+    if (institution) {
+      submission.fieldValues = submission.fieldValues || {};
+      submission.fieldValues.institution = institution;
+      submission.fieldValues.current_institution = institution;
+    }
+
+    // 3. Update bank details
+    if (bankDetails && typeof bankDetails === "object") {
+      submission.bankDetails = {
+        ...(submission.bankDetails || {}),
+        ...bankDetails
+      };
+    }
+
+    await submission.save();
+
+    // 4. If linked user exists or submission is Approved, sync User model
+    const targetEmail = (submission.email || oldEmail || "").toLowerCase().trim();
+    let userSynced = false;
+
+    if (targetEmail) {
+      const existingUser =
+        (await User.findOne({ email: targetEmail })) ||
+        (oldEmail && oldEmail !== targetEmail ? await User.findOne({ email: oldEmail.toLowerCase().trim() }) : null);
+
+      if (existingUser) {
+        if (submission.fullname) existingUser.name = submission.fullname;
+        if (submission.email) existingUser.email = submission.email.toLowerCase().trim();
+        if (submission.mobile) existingUser.phone = submission.mobile;
+        if (submission.role) existingUser.role = submission.role;
+        if (department) existingUser.department = department;
+        if (designation) existingUser.designation = designation;
+        if (institution) existingUser.institution = institution;
+
+        if (status === "Approved") {
+          existingUser.status = 1;
+          existingUser.status1 = "Active";
+        } else if (status === "Hold" || status === "Rejected") {
+          existingUser.status = 0;
+          existingUser.status1 = status;
+        }
+
+        if (submission.customFields && typeof submission.customFields === "object") {
+          if (!existingUser.customFields) existingUser.customFields = new Map();
+          for (const [k, v] of Object.entries(submission.customFields)) {
+            if (existingUser.customFields instanceof Map) {
+              existingUser.customFields.set(k, v);
+            } else {
+              existingUser.customFields[k] = v;
+            }
+          }
+        }
+
+        await existingUser.save();
+        userSynced = true;
+      }
+    }
+
+    // 5. Sync UserBankAccount if bank details changed
+    if (submission.bankDetails?.accountnumber && submission.bankDetails?.bankname && targetEmail) {
+      try {
+        await UserBankAccount.findOneAndUpdate(
+          { colid: Number(colid), owneruser: targetEmail },
+          {
+            colid: Number(colid),
+            owneruser: targetEmail,
+            ownername: submission.fullname,
+            ownerrole: submission.role || "Faculty",
+            bankname: submission.bankDetails.bankname,
+            branchname: submission.bankDetails.branchname || "",
+            accountholdername: submission.bankDetails.accountholdername || submission.fullname,
+            accountnumber: submission.bankDetails.accountnumber,
+            ifsccode: submission.bankDetails.ifsccode || "",
+            status: "Active",
+            remarks: "Updated by admin"
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (be) {
+        console.error("Error updating UserBankAccount:", be.message);
+      }
+    }
+
+    return res.status(200).json({
+      status: "Success",
+      message: userSynced
+        ? "Application and linked user account updated successfully."
+        : "Application details updated successfully.",
+      data: submission,
+      userSynced
+    });
+  } catch (err) {
+    console.error("updateSubmission error:", err);
     return res.status(500).json({ status: "Error", message: err.message });
   }
 };

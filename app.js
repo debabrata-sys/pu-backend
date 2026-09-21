@@ -1113,6 +1113,7 @@ app.post('/api/v2/evaluator-registration/submit', evaluatorRegistrationDynamicCo
 app.get('/api/v2/evaluator-registration/submissions', evaluatorRegistrationDynamicController.getSubmissions);
 app.get('/api/v2/evaluator-registration/submission-details', evaluatorRegistrationDynamicController.getSubmissionDetails);
 app.post('/api/v2/evaluator-registration/process-action', evaluatorRegistrationDynamicController.processApprovalAction);
+app.post('/api/v2/evaluator-registration/submissions-update', evaluatorRegistrationDynamicController.updateSubmission);
 
 app.get('/api/v2/legal-cases/options', legalCasesController.options);
 app.get('/api/v2/legal-cases/cases', legalCasesController.listCases);
